@@ -35,6 +35,7 @@ Examples:
 
 
 def print_help():
+    """Print the CLI help text."""
     print(HELP_TEXT)
 
 
@@ -49,6 +50,7 @@ def exit_error(message):
 
 
 def load_queue():
+    """Load the posting queue from disk or return an empty queue."""
     if os.path.exists(QUEUE_FILE):
         try:
             with open(QUEUE_FILE) as f:
@@ -63,6 +65,7 @@ def load_queue():
 
 
 def save_queue(q):
+    """Persist the posting queue to disk."""
     try:
         os.makedirs(os.path.dirname(QUEUE_FILE), exist_ok=True)
         with open(QUEUE_FILE, "w") as f:
@@ -72,6 +75,7 @@ def save_queue(q):
 
 
 def main():
+    """Run the xqueue command-line interface."""
     args = sys.argv[1:]
     if not args or args[0] in {"-h", "--help"}:
         print_help()

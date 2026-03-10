@@ -34,6 +34,7 @@ Examples:
 
 
 def print_help():
+    """Print the CLI help text."""
     print(HELP_TEXT)
 
 
@@ -50,17 +51,20 @@ def require_args(args, expected_usage, min_args):
 
 
 def load_json(path, default=None):
+    """Load JSON data from disk or return the provided default."""
     if os.path.exists(path):
         with open(path) as f:
             return json.load(f)
     return default or {}
 
 def save_json(path, data):
+    """Write JSON data to disk, creating parent directories as needed."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
 
 def run_cmd(cmd):
+    """Run a subprocess command and return stdout, or an empty string on failure."""
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         return r.stdout
@@ -286,6 +290,7 @@ def show_leaderboard():
             print(f"  {followers}")
 
 def main():
+    """Run the xgrowth command-line interface."""
     args = sys.argv[1:]
     if not args or args[0] in {"-h", "--help"}:
         print_help()

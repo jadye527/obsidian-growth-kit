@@ -37,6 +37,7 @@ Examples:
 
 
 def print_help():
+    """Print the CLI help text."""
     print(HELP_TEXT)
 
 
@@ -68,6 +69,7 @@ def parse_top_limit(args):
 
 
 def load_keys():
+    """Load X API credentials from the configured env file."""
     env = {}
     with open(KEYS_FILE) as f:
         for line in f:
@@ -78,6 +80,7 @@ def load_keys():
     return env
 
 def get_client(env):
+    """Create a Tweepy client from loaded credentials."""
     import tweepy
 
     return tweepy.Client(
@@ -89,17 +92,20 @@ def get_client(env):
     )
 
 def load_data():
+    """Load analytics snapshots from disk or return an empty store."""
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE) as f:
             return json.load(f)
     return {"snapshots": [], "posts": {}}
 
 def save_data(data):
+    """Persist analytics snapshots to disk."""
     os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
 def main():
+    """Run the xanalytics command-line interface."""
     args = sys.argv[1:]
     if not args or args[0] in {"-h", "--help"}:
         print_help()
