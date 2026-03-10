@@ -2,10 +2,41 @@
 """xqueue — Tweet scheduler.
 Queues tweets and posts them at intervals to avoid spam filters.
 """
-import sys, os, json, time, subprocess
+import json
+import os
+import subprocess
+import sys
+import time
 
 QUEUE_FILE = os.environ.get("X_QUEUE_FILE", os.path.expanduser("~/.config/x-api/queue.json"))
 MIN_INTERVAL = 900  # 15 minutes between tweets (safe for new accounts)
+
+
+HELP_TEXT = """xqueue — Tweet Scheduler
+
+Usage:
+  xqueue <command> [args]
+  xqueue --help
+
+Commands:
+  add "tweet text"          Add tweet to queue
+  list                      Show queued tweets
+  flush                     Post all queued tweets with cooldown delays
+  next                      Post the next queued tweet if cooldown passed
+  clear                     Clear the queue
+  count                     Show queue size
+
+Examples:
+  xqueue add "Shipping one useful change at a time"
+  xqueue list
+  xqueue next
+  xqueue flush
+"""
+
+
+def print_help():
+    print(HELP_TEXT)
+
 
 def load_queue():
     if os.path.exists(QUEUE_FILE):
@@ -20,16 +51,8 @@ def save_queue(q):
 
 def main():
     args = sys.argv[1:]
-    if not args:
-        print("xqueue — Tweet Scheduler")
-        print()
-        print("Usage:")
-        print("  xqueue add \"tweet text\"     Add tweet to queue")
-        print("  xqueue list                  Show queued tweets")
-        print("  xqueue flush                 Post all queued tweets (with delays)")
-        print("  xqueue next                  Post the next queued tweet if cooldown passed")
-        print("  xqueue clear                 Clear the queue")
-        print("  xqueue count                 Show queue size")
+    if not args or args[0] in {"-h", "--help"}:
+        print_help()
         return
 
     cmd = args[0]
