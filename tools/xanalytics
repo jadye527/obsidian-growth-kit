@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+"""xanalytics — Track X/Twitter post performance.
+Stores metrics in JSON, compares day-over-day, finds top performers.
+
+Configuration:
+  X_KEYS_FILE         Path to keys.env (default: ~/.config/x-api/keys.env)
+  X_ANALYTICS_FILE    Path to analytics data (default: ~/.config/x-api/analytics.json)
+  X_USER_HANDLE       Your X handle, used in display output
+"""
+import sys, os, json, time, tweepy
+
+KEYS_FILE = os.environ.get("X_KEYS_FILE", os.path.expanduser("~/.config/x-api/keys.env"))
+DATA_FILE = os.environ.get("X_ANALYTICS_FILE", os.path.expanduser("~/.config/x-api/analytics.json"))
+
+def load_keys():
+    env = {}
+    with open(KEYS_FILE) as f:
+        for line in f:
+            line = line.strip()
+            if "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                env[k] = v
+    return env
+
+def get_client(env):
+    return tweepy.Client(
+        consumer_key=env["X_API_KEY"],
+        consumer_secret=env["X_API_SECRET"],
+        access_token=env["X_ACCESS_TOKEN"],
+        access_token_secret=env["X_ACCESS_TOKEN_SECRET"],
+        bearer_token=env.get("TWITTER_BEARER_TOKEN"),
+    )
+
+def load_data():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE) as f:
+            return json.load(f)
+    return {"snapshots": [], "posts": {}}
+
+def save_data(data):
+    os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        print("xanalytics — Post Performance Tracker")
+        print()
+        print("Commands:")
+        print("  snapshot        Fetch current metrics for all our posts")
+        print("  top             Show top performing posts")
+        print("  report          Daily engagement report")
+        print("  growth          Follower growth tracking")
+        print("  compare         Compare today vs yesterday")
+        return
+
+    env = load_keys()
+    client = get_client(env)
+    data = load_data()
+    cmd = args[0]
+    user_handle = env.get("X_USER_HANDLE", "me")
+
+    if cmd == "snapshot":
+        me = client.get_me(user_fields=["public_metrics"])
+        user_metrics = me.data.public_metrics
+
+        # Get our recent posts
+        tweets = client.get_users_tweets(
+            me.data.id, max_results=20,
+            tweet_fields=["created_at", "public_metrics", "text"],
+            exclude=["retweets"]
+        )
+
+        ts = int(time.time())
+        snapshot = {
+            "timestamp": ts,
+            "date": time.strftime("%Y-%m-%d %H:%M", time.localtime(ts)),
+            "followers": user_metrics.get("followers_count", 0),
+            "following": user_metrics.get("following_count", 0),
+            "total_tweets": user_metrics.get("tweet_count", 0),
+            "posts": []
+        }
+
+        total_likes = 0
+        total_replies = 0
+        total_reposts = 0
+        total_impressions = 0
+        total_bookmarks = 0
+
+        if tweets.data:
+            for t in tweets.data:
+                m = t.public_metrics or {}
+                likes = m.get("like_count", 0)
+                replies = m.get("reply_count", 0)
+                reposts = m.get("retweet_count", 0)
+                impressions = m.get("impression_count", 0)
+                bookmarks = m.get("bookmark_count", 0)
+
+                total_likes += likes
+                total_replies += replies
+                total_reposts += reposts
+                total_impressions += impressions
+                total_bookmarks += bookmarks
+
+                post_data = {
+                    "id": str(t.id),
+                    "text": t.text[:100],
+                    "created": str(t.created_at),
+                    "likes": likes,
+                    "replies": replies,
+                    "reposts": reposts,
+                    "impressions": impressions,
+                    "bookmarks": bookmarks,
+                    "engagement": likes + replies + reposts + bookmarks
+                }
+                snapshot["posts"].append(post_data)
+                data["posts"][str(t.id)] = post_data
+
+        snapshot["totals"] = {
+            "likes": total_likes,
+            "replies": total_replies,
+            "reposts": total_reposts,
+            "impressions": total_impressions,
+            "bookmarks": total_bookmarks,
+            "engagement": total_likes + total_replies + total_reposts + total_bookmarks
+        }
+
+        data["snapshots"].append(snapshot)
+        save_data(data)
+
+        print(f"@{user_handle} — {snapshot['date']}")
+        print(f"Followers: {snapshot['followers']} | Following: {snapshot['following']} | Posts: {snapshot['total_tweets']}")
+        print(f"Total engagement (last 20 posts): {snapshot['totals']['engagement']}")
+        print(f"  Likes: {total_likes} | Replies: {total_replies} | Reposts: {total_reposts} | Bookmarks: {total_bookmarks}")
+        print(f"  Impressions: {total_impressions}")
+        print(f"\nSnapshot saved.")
+
+    elif cmd == "top":
+        n = 5
+        if len(args) > 1:
+            try: n = int(args[1])
+            except: pass
+
+        if not data["posts"]:
+            print("No data yet. Run: xanalytics snapshot")
+            return
+
+        sorted_posts = sorted(data["posts"].values(), key=lambda p: p.get("engagement", 0), reverse=True)
+        print(f"TOP {n} POSTS BY ENGAGEMENT:\n")
+        for i, p in enumerate(sorted_posts[:n]):
+            print(f"{i+1}. [{p['engagement']} eng] ♥{p['likes']} 💬{p['replies']} 🔁{p['reposts']} 📑{p['bookmarks']}")
+            print(f"   👁 {p['impressions']} impressions")
+            print(f"   \"{p['text']}...\"")
+            print(f"   id:{p['id']}")
+            print()
+
+    elif cmd == "report":
+        if not data["snapshots"]:
+            print("No data yet. Run: xanalytics snapshot")
+            return
+        latest = data["snapshots"][-1]
+        print(f"DAILY REPORT — {latest['date']}")
+        print(f"=" * 50)
+        print(f"Followers: {latest['followers']}")
+        print(f"Total posts: {latest['total_tweets']}")
+        print(f"\nEngagement (last 20 posts):")
+        t = latest["totals"]
+        print(f"  Total: {t['engagement']}")
+        print(f"  Likes: {t['likes']} | Replies: {t['replies']} | Reposts: {t['reposts']}")
+        print(f"  Impressions: {t['impressions']}")
+
+        if len(latest["posts"]) > 0:
+            avg_eng = t["engagement"] / len(latest["posts"])
+            avg_imp = t["impressions"] / len(latest["posts"])
+            eng_rate = (t["engagement"] / t["impressions"] * 100) if t["impressions"] > 0 else 0
+            print(f"\nAverages per post:")
+            print(f"  Engagement: {avg_eng:.1f} | Impressions: {avg_imp:.0f}")
+            print(f"  Engagement rate: {eng_rate:.2f}%")
+
+    elif cmd == "growth":
+        if len(data["snapshots"]) < 2:
+            print("Need at least 2 snapshots. Run: xanalytics snapshot periodically")
+            if data["snapshots"]:
+                print(f"Current followers: {data['snapshots'][-1]['followers']}")
+            return
+
+        first = data["snapshots"][0]
+        latest = data["snapshots"][-1]
+        diff = latest["followers"] - first["followers"]
+        days = max(1, (latest["timestamp"] - first["timestamp"]) / 86400)
+        print(f"FOLLOWER GROWTH")
+        print(f"  First snapshot: {first['date']} — {first['followers']} followers")
+        print(f"  Latest: {latest['date']} — {latest['followers']} followers")
+        print(f"  Change: {'+' if diff >= 0 else ''}{diff} ({diff/days:.1f}/day)")
+
+        # Show all snapshots
+        print(f"\nHistory:")
+        for s in data["snapshots"]:
+            print(f"  {s['date']}: {s['followers']} followers, {s['totals']['engagement']} eng")
+
+    elif cmd == "compare":
+        if len(data["snapshots"]) < 2:
+            print("Need 2+ snapshots to compare.")
+            return
+        prev = data["snapshots"][-2]
+        curr = data["snapshots"][-1]
+        print(f"COMPARISON: {prev['date']} → {curr['date']}")
+        print(f"  Followers: {prev['followers']} → {curr['followers']} ({'+' if curr['followers'] >= prev['followers'] else ''}{curr['followers'] - prev['followers']})")
+        for metric in ["likes", "replies", "reposts", "impressions", "engagement"]:
+            p = prev["totals"].get(metric, 0)
+            c = curr["totals"].get(metric, 0)
+            d = c - p
+            print(f"  {metric.title()}: {p} → {c} ({'+' if d >= 0 else ''}{d})")
+
+    else:
+        print(f"Unknown command: {cmd}")
+
+if __name__ == "__main__":
+    main()

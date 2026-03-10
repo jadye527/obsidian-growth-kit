@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Trading Dashboard — Obsidian AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .gradient-text { background: linear-gradient(135deg, #a78bfa, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .card-glow { box-shadow: 0 0 40px rgba(139,92,246,0.12); }
+    .green-glow { box-shadow: 0 0 30px rgba(34,197,94,0.08); }
+    .pos { color: #4ade80; }
+    .neg { color: #f87171; }
+    .badge-automated {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 999px; font-size: 0.75rem; font-weight: 600;
+      background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.3);
+      color: #a78bfa; letter-spacing: 0.05em; text-transform: uppercase;
+    }
+    .badge-ai {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 999px; font-size: 0.75rem; font-weight: 500;
+      background: rgba(56,189,248,0.1); border: 1px solid rgba(56,189,248,0.25);
+      color: #38bdf8;
+    }
+    .cta-banner {
+      background: linear-gradient(135deg, rgba(139,92,246,0.12), rgba(99,102,241,0.12));
+      border: 1px solid rgba(139,92,246,0.25);
+    }
+    .metric-card { transition: transform 0.15s ease; }
+    .metric-card:hover { transform: translateY(-2px); }
+    .chart-bar { transition: height 0.3s ease; }
+    table tbody tr { transition: background 0.15s ease; }
+    table tbody tr:hover { background: rgba(139,92,246,0.06); }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 antialiased min-h-screen">
+
+  <!-- Nav -->
+  <nav class="border-b border-gray-800 px-6 py-4">
+    <div class="max-w-6xl mx-auto flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="text-xl font-bold gradient-text">⚫ Obsidian</span>
+        <span class="text-gray-500 text-sm hidden sm:inline">Live Trading Dashboard</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="badge-automated">🤖 Automated</span>
+        <a href="https://x.com/YourHandle" target="_blank" class="text-gray-400 hover:text-white text-sm font-medium flex items-center gap-1.5 transition">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+          @YourHandle
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-6xl mx-auto px-6 py-8">
+
+    <!-- Hero -->
+    <div class="mb-8">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 class="text-3xl sm:text-4xl font-bold mb-2">📊 Live P&L Dashboard</h1>
+          <p class="text-gray-400 max-w-xl">Real-time performance tracking for our AI agents trading weather prediction markets on Polymarket. Every trade logged. Full transparency.</p>
+        </div>
+        <div class="flex flex-col items-end gap-2">
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-400 text-sm">
+            <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+            Paper Trading
+          </div>
+          <span id="last-updated" class="text-gray-500 text-xs">Loading...</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+      <div class="metric-card bg-gray-900/80 border border-gray-800 rounded-2xl p-5 card-glow">
+        <span class="text-gray-500 text-xs uppercase tracking-wider">Today P&L</span>
+        <strong id="today-pnl" class="block text-2xl font-bold mt-1">$0.00</strong>
+      </div>
+      <div class="metric-card bg-gray-900/80 border border-gray-800 rounded-2xl p-5 card-glow">
+        <span class="text-gray-500 text-xs uppercase tracking-wider">This Week</span>
+        <strong id="week-pnl" class="block text-2xl font-bold mt-1">$0.00</strong>
+      </div>
+      <div class="metric-card bg-gray-900/80 border border-gray-800 rounded-2xl p-5 card-glow">
+        <span class="text-gray-500 text-xs uppercase tracking-wider">All-Time P&L</span>
+        <strong id="all-time-pnl" class="block text-2xl font-bold mt-1">$0.00</strong>
+      </div>
+      <div class="metric-card bg-gray-900/80 border border-gray-800 rounded-2xl p-5 card-glow">
+        <span class="text-gray-500 text-xs uppercase tracking-wider">Win Rate</span>
+        <strong id="win-rate" class="block text-2xl font-bold mt-1">0%</strong>
+        <div class="mt-2 h-2 rounded-full bg-gray-800 overflow-hidden">
+          <div id="win-rate-bar" class="h-full rounded-full transition-all duration-300" style="width:0%"></div>
+        </div>
+        <span id="win-loss-record" class="text-gray-500 text-xs mt-1 block">0W / 0L</span>
+      </div>
+      <div class="metric-card bg-gray-900/80 border border-gray-800 rounded-2xl p-5 card-glow">
+        <span class="text-gray-500 text-xs uppercase tracking-wider">Bankroll</span>
+        <strong id="bankroll" class="block text-2xl font-bold mt-1">$0.00</strong>
+      </div>
+    </div>
+
+    <!-- CTA Banner -->
+    <div class="cta-banner rounded-2xl p-6 mb-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div>
+        <p class="font-semibold text-lg">Want to build your own AI trading system?</p>
+        <p class="text-gray-400 text-sm mt-1">Get our complete guide — strategy, code, and deployment playbook.</p>
+      </div>
+      <a href="https://your-product-page.com" class="bg-violet-600 hover:bg-violet-500 text-white font-medium px-6 py-3 rounded-xl transition whitespace-nowrap">
+        Get the Guide → $29
+      </a>
+    </div>
+
+    <!-- Charts + Active Positions -->
+    <div class="grid lg:grid-cols-2 gap-6 mb-8">
+      <!-- P&L Chart -->
+      <div class="bg-gray-900/80 border border-gray-800 rounded-2xl p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <span class="text-gray-500 text-xs uppercase tracking-wider">Performance</span>
+            <h2 class="text-lg font-semibold mt-1">P&L Over Time</h2>
+          </div>
+          <span id="chart-range" class="text-gray-500 text-xs">Loading...</span>
+        </div>
+        <div id="chart-container" class="h-48 flex items-end gap-1"></div>
+      </div>
+
+      <!-- Active Positions -->
+      <div class="bg-gray-900/80 border border-gray-800 rounded-2xl p-6">
+        <span class="text-gray-500 text-xs uppercase tracking-wider">Open Risk</span>
+        <h2 class="text-lg font-semibold mt-1 mb-4">Active Positions</h2>
+        <div id="active-positions" class="text-gray-500 text-sm">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Performance Tables -->
+    <div class="grid lg:grid-cols-2 gap-6 mb-8">
+      <!-- By City -->
+      <div class="bg-gray-900/80 border border-gray-800 rounded-2xl p-6">
+        <span class="text-gray-500 text-xs uppercase tracking-wider">Market Coverage</span>
+        <h2 class="text-lg font-semibold mt-1 mb-4">Performance by City</h2>
+        <div class="overflow-x-auto rounded-xl border border-gray-800">
+          <table class="w-full text-sm">
+            <thead><tr class="bg-gray-900/50">
+              <th class="text-left p-3 text-gray-500 text-xs uppercase tracking-wider">City</th>
+              <th class="text-left p-3 text-gray-500 text-xs uppercase tracking-wider">Trades</th>
+              <th class="text-left p-3 text-gray-500 text-xs uppercase tracking-wider">Wins</th>
+              <th class="text-left p-3 text-gray-500 text-xs uppercase tracking-wider">Losses</th>
+              <th class="text-left p-3 text-gray-500 text-xs uppercase tracking-wider">P&L</th>
+            </tr></thead>
+            <tbody id="city-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- By Signal -->
+      <div class="bg-gray-900/80 border border-gray-800 rounded-2xl p-6">
+        <span class="text-gray-500 text-xs uppercase tracking-wider">Signal Quality</span>
+        <h2 class="text-lg font-semibold mt-1 mb-4">Performance by Signal</h2>
+        <div class="overflow-x-auto rounded-xl border border-gray-800">
+          <table class="w-full text-sm">
+            <thead><tr class="bg-gray-900/50">
+              <th class="text-left p-3 text-gray-500 text-xs uppercase tracking-wider">Signal</th>
+              <th class="text-left p-3 text-gray-500 text-xs uppercase tracking-wider">Trades</th>
+              <th class="text-left p-3 text-gray-500 text-xs uppercase tracking-wider">Wins</th>
+              <th class="text-left p-3 text-gray-500 text-xs uppercase tracking-wider">Losses</th>
+              <th class="text-left p-3 text-gray-500 text-xs uppercase tracking-wider">P&L</th>
+            </tr></thead>
+            <tbody id="signal-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Trades -->
+    <div class="bg-gray-900/80 border border-gray-800 rounded-2xl p-6 mb-8">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <span class="text-gray-500 text-xs uppercase tracking-wider">Trade Log</span>
+          <h2 class="text-lg font-semibold mt-1">Recent Trades</h2>
+        </div>
+        <span class="text-gray-500 text-xs">Last 20 trades</span>
+      </div>
+      <div class="overflow-x-auto rounded-xl border border-gray-800">
+        <table class="w-full text-sm">
+          <thead><tr class="bg-gray-900/50">
+            <th class="text-left p-3 text-gray-500 text-xs uppercase tracking-wider">City</th>
+            <th class="text-left p-3 text-gray-500 text-xs uppercase tracking-wider">Signal</th>
+            <th class="text-left p-3 text-gray-500 text-xs uppercase tracking-wider">Entry</th>
+            <th class="text-left p-3 text-gray-500 text-xs uppercase tracking-wider">Exit</th>
+            <th class="text-left p-3 text-gray-500 text-xs uppercase tracking-wider">P&L</th>
+            <th class="text-left p-3 text-gray-500 text-xs uppercase tracking-wider">Result</th>
+          </tr></thead>
+          <tbody id="trades-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Trading Rules -->
+    <div class="bg-gray-900/80 border border-gray-800 rounded-2xl p-6 mb-8">
+      <span class="text-gray-500 text-xs uppercase tracking-wider">Guardrails</span>
+      <h2 class="text-lg font-semibold mt-1 mb-4">Trading Rules</h2>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <div class="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
+          <p class="text-gray-500 text-xs uppercase tracking-wider mb-3">Banned Cities</p>
+          <div id="banned-cities" class="flex flex-wrap gap-2"></div>
+        </div>
+        <div class="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
+          <p class="text-gray-500 text-xs uppercase tracking-wider mb-3">Allowed Signals</p>
+          <div id="allowed-signals" class="flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Built by AI Badge -->
+    <div class="bg-gray-900/60 border border-gray-800 rounded-2xl p-6 mb-8 text-center">
+      <span class="badge-ai mb-3">🤖 Built by AI</span>
+      <p class="text-gray-400 text-sm mt-3 max-w-lg mx-auto">
+        This dashboard was built autonomously by our AI coding agent (Ralph) using OpenAI Codex — 17 tasks completed in 50 minutes with zero human code written.
+        The trading system is powered by <a href="https://openclaw.com" class="text-violet-400 hover:text-violet-300">OpenClaw</a>.
+      </p>
+    </div>
+
+    <!-- Bottom CTA -->
+    <div class="cta-banner rounded-2xl p-8 mb-8 text-center">
+      <h3 class="text-2xl font-bold mb-2">Build Your Own AI Trading Agent</h3>
+      <p class="text-gray-400 mb-6 max-w-md mx-auto">Complete guide to building autonomous Polymarket weather trading agents. Strategy, code, and deployment.</p>
+      <div class="flex flex-col sm:flex-row gap-3 justify-center">
+        <a href="https://your-product-page.com" class="bg-violet-600 hover:bg-violet-500 text-white font-medium px-8 py-3 rounded-xl transition">
+          Starter Guide — $29
+        </a>
+        <a href="https://your-product-page.com" class="bg-gray-800 hover:bg-gray-700 text-white font-medium px-8 py-3 rounded-xl transition border border-gray-700">
+          Full System — $99
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-800 px-6 py-8 mt-8">
+    <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+      <div class="flex items-center gap-4">
+        <span class="font-semibold gradient-text">⚫ Obsidian AI</span>
+        <span>Your Company</span>
+      </div>
+      <div class="flex items-center gap-6">
+        <a href="https://your-product-page.com" class="hover:text-gray-300 transition">Products</a>
+        <a href="https://x.com/YourHandle" class="hover:text-gray-300 transition">𝕏 Twitter</a>
+        <a href="mailto:your@email.com" class="hover:text-gray-300 transition">Contact</a>
+      </div>
+      <div>Data updates daily • Paper trading only</div>
+    </div>
+  </footer>
+
+  <script>
+    // Embedded trade data (updated by deploy script)
+    const DATA = {
+      // Replace with your own trading data
+      summary: {today_pnl: 0, week_pnl: 0, all_time_pnl: 0, total_trades: 0, resolved_trades: 0, wins: 0, losses: 0, win_rate: 0, bankroll: 100},
+      byCity: [],
+      bySignal: [],
+      chart: [],
+      trades: [],
+      rules: {banned_cities: [], allowed_signals: []},
+      positions: [],
+      lastUpdate: new Date().toISOString()
+    };
+
+    const money = (v) => { const n = Number(v||0); return `${n<0?'-':''}$${Math.abs(n).toFixed(2)}`; };
+    const pnlClass = (v) => Number(v||0) >= 0 ? 'pos' : 'neg';
+
+    function render() {
+      const s = DATA.summary;
+      // Summary cards
+      document.getElementById('today-pnl').textContent = money(s.today_pnl);
+      document.getElementById('today-pnl').className = `block text-2xl font-bold mt-1 ${pnlClass(s.today_pnl)}`;
+      document.getElementById('week-pnl').textContent = money(s.week_pnl);
+      document.getElementById('week-pnl').className = `block text-2xl font-bold mt-1 ${pnlClass(s.week_pnl)}`;
+      document.getElementById('all-time-pnl').textContent = money(s.all_time_pnl);
+      document.getElementById('all-time-pnl').className = `block text-2xl font-bold mt-1 ${pnlClass(s.all_time_pnl)}`;
+      document.getElementById('win-rate').textContent = `${s.win_rate}%`;
+      document.getElementById('win-rate').className = `block text-2xl font-bold mt-1 ${s.win_rate >= 50 ? 'pos' : 'neg'}`;
+      document.getElementById('win-rate-bar').style.width = `${s.win_rate}%`;
+      document.getElementById('win-rate-bar').className = `h-full rounded-full transition-all duration-300 ${s.win_rate >= 50 ? 'bg-green-400' : 'bg-red-400'}`;
+      document.getElementById('win-loss-record').textContent = `${s.wins}W / ${s.losses}L`;
+      document.getElementById('bankroll').textContent = money(s.bankroll);
+      document.getElementById('bankroll').className = `block text-2xl font-bold mt-1 ${pnlClass(s.bankroll)}`;
+
+      // Chart
+      const container = document.getElementById('chart-container');
+      const points = DATA.chart;
+      if (points.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-sm m-auto">No chart data yet</p>';
+      } else {
+        const vals = points.map(p => p.cumulative_pnl);
+        const min = Math.min(0, ...vals);
+        const max = Math.max(0, ...vals);
+        const range = max - min || 1;
+        container.innerHTML = points.map((p, i) => {
+          const normalized = ((p.cumulative_pnl - min) / range) * 100;
+          const color = p.cumulative_pnl >= 0 ? 'bg-green-400' : 'bg-red-400';
+          return `<div class="flex-1 flex flex-col items-center justify-end h-full gap-1">
+            <span class="text-xs text-gray-500">${money(p.cumulative_pnl)}</span>
+            <div class="chart-bar w-full ${color} rounded-t opacity-80" style="height:${Math.max(normalized, 4)}%"></div>
+            <span class="text-xs text-gray-600">${p.day.slice(5)}</span>
+          </div>`;
+        }).join('');
+        const range_el = document.getElementById('chart-range');
+        range_el.textContent = `${points[0].day} → ${points[points.length-1].day}`;
+      }
+
+      // Active positions
+      const posEl = document.getElementById('active-positions');
+      if (DATA.positions.length === 0) {
+        posEl.innerHTML = '<div class="flex items-center justify-center h-32 text-gray-600"><p>No open positions</p></div>';
+      } else {
+        posEl.innerHTML = DATA.positions.map(p => `
+          <div class="bg-gray-950/50 border border-gray-800 rounded-xl p-3 mb-2">
+            <div class="flex justify-between"><span class="font-medium">${p.city}</span><span class="text-gray-500 text-xs">${p.signal_type}</span></div>
+            <div class="text-gray-500 text-xs mt-1">Entry: ${money(p.entry_price)} | Size: $${p.position_size}</div>
+          </div>
+        `).join('');
+      }
+
+      // City table
+      document.getElementById('city-body').innerHTML = DATA.byCity.map(r => `
+        <tr class="border-t border-gray-800/50">
+          <td class="p-3 font-medium">${r.city}</td>
+          <td class="p-3 text-gray-400">${r.trades}</td>
+          <td class="p-3 pos">${r.wins}</td>
+          <td class="p-3 neg">${r.losses}</td>
+          <td class="p-3 ${pnlClass(r.pnl)} font-medium">${money(r.pnl)}</td>
+        </tr>
+      `).join('');
+
+      // Signal table
+      document.getElementById('signal-body').innerHTML = DATA.bySignal.map(r => `
+        <tr class="border-t border-gray-800/50">
+          <td class="p-3 font-medium">${r.signal}</td>
+          <td class="p-3 text-gray-400">${r.trades}</td>
+          <td class="p-3 pos">${r.wins}</td>
+          <td class="p-3 neg">${r.losses}</td>
+          <td class="p-3 ${pnlClass(r.pnl)} font-medium">${money(r.pnl)}</td>
+        </tr>
+      `).join('');
+
+      // Trades table
+      document.getElementById('trades-body').innerHTML = DATA.trades.map(t => `
+        <tr class="border-t border-gray-800/50">
+          <td class="p-3">${t.city}</td>
+          <td class="p-3 text-gray-400">${t.signal_type}</td>
+          <td class="p-3">${money(t.entry_price)}</td>
+          <td class="p-3">${t.exit_price != null ? money(t.exit_price) : '—'}</td>
+          <td class="p-3 ${pnlClass(t.pnl)} font-medium">${money(t.pnl)}</td>
+          <td class="p-3"><span class="px-2 py-0.5 rounded text-xs font-medium ${t.outcome === 'WIN' ? 'bg-green-500/20 text-green-400' : t.outcome === 'LOSS' ? 'bg-red-500/20 text-red-400' : 'bg-gray-500/20 text-gray-400'}">${t.outcome}</span></td>
+        </tr>
+      `).join('');
+
+      // Rules
+      const bc = DATA.rules.banned_cities;
+      document.getElementById('banned-cities').innerHTML = bc.length
+        ? bc.map(c => `<span class="px-3 py-1 rounded-full text-xs bg-red-500/10 border border-red-500/20 text-red-400">${c}</span>`).join('')
+        : '<span class="text-gray-600 text-sm">None — all cities active</span>';
+      document.getElementById('allowed-signals').innerHTML = DATA.rules.allowed_signals
+        .map(s => `<span class="px-3 py-1 rounded-full text-xs bg-violet-500/10 border border-violet-500/20 text-violet-400">${s}</span>`).join('');
+
+      // Timestamp
+      document.getElementById('last-updated').textContent = `Last updated: ${new Date(DATA.lastUpdate).toLocaleString()}`;
+    }
+
+    render();
+  </script>
+</body>
+</html>

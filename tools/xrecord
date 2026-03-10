@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+# xrecord — Automated agent activity recorder for content creation
+# Records terminal sessions of our AI agents working, converts to shareable formats
+#
+# Usage:
+#   xrecord demo <name>           Record a scripted demo (auto-types commands)
+#   xrecord snapshot              Quick 30s recording of current agent activity
+#   xrecord session <name> <sec>  Record a live session for N seconds
+#   xrecord list                  List all recordings
+#   xrecord gif <name>            Convert recording to GIF (requires svg-term)
+#   xrecord upload <name>         Upload to asciinema.org for embedding
+
+set -euo pipefail
+
+RECORD_DIR="$HOME/.config/x-api/recordings"
+mkdir -p "$RECORD_DIR"
+
+cmd="${1:-help}"
+
+case "$cmd" in
+  demo)
+    # Run a scripted demo showing our agent in action
+    NAME="${2:-agent-demo-$(date +%Y%m%d-%H%M)}"
+    CAST="$RECORD_DIR/$NAME.cast"
+
+    echo "🎬 Recording demo: $NAME"
+    echo "   Output: $CAST"
+
+    # Create a demo script that shows the agent working
+    SCRIPT=$(mktemp)
+    cat > "$SCRIPT" << 'DEMO'
+#!/usr/bin/env bash
+# Simulated typing effect
+type_cmd() {
+  echo ""
+  echo -n "$ "
+  for ((i=0; i<${#1}; i++)); do
+    echo -n "${1:$i:1}"
+    sleep 0.04
+  done
+  echo ""
+  sleep 0.3
+}
+
+clear
+echo "⚫ Obsidian AI — Live Agent Session"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+sleep 1
+
+type_cmd "xanalytics snapshot"
+xanalytics snapshot 2>/dev/null
+sleep 2
+
+type_cmd "xscout opportunities"
+xscout opportunities 2>/dev/null | head -25
+sleep 2
+
+type_cmd "xpost mentions"
+xpost mentions 2>/dev/null | head -20
+sleep 2
+
+type_cmd "xqueue list"
+xqueue list 2>/dev/null
+sleep 2
+
+type_cmd "xgrowth track"
+xgrowth track 2>/dev/null
+sleep 2
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "⚫ Obsidian AI — Autonomous operations"
+echo "   https://jadye527.github.io/obsidian-trading/"
+sleep 3
+DEMO
+    chmod +x "$SCRIPT"
+
+    asciinema rec --command "bash $SCRIPT" --title "Obsidian AI — Agent Operations" "$CAST"
+    rm "$SCRIPT"
+
+    echo ""
+    echo "✅ Recording saved: $CAST"
+    echo "   Share: asciinema upload $CAST"
+    echo "   Play:  asciinema play $CAST"
+    ;;
+
+  snapshot)
+    # Quick snapshot of current activity
+    NAME="snapshot-$(date +%Y%m%d-%H%M)"
+    CAST="$RECORD_DIR/$NAME.cast"
+
+    echo "📸 Quick snapshot (30s)..."
+
+    SCRIPT=$(mktemp)
+    cat > "$SCRIPT" << 'SNAP'
+#!/usr/bin/env bash
+clear
+echo "⚫ Obsidian AI — Status Check $(date '+%Y-%m-%d %H:%M ET')"
+echo ""
+echo "📊 Analytics:"
+xanalytics snapshot 2>/dev/null
+sleep 1
+echo ""
+echo "📬 Queue:"
+xqueue list 2>/dev/null
+sleep 1
+echo ""
+echo "🔍 Latest mentions:"
+xpost mentions 2>/dev/null | head -10
+sleep 3
+SNAP
+    chmod +x "$SCRIPT"
+
+    asciinema rec --command "bash $SCRIPT" --title "Obsidian AI — Status Snapshot" "$CAST"
+    rm "$SCRIPT"
+
+    echo "✅ Snapshot saved: $CAST"
+    ;;
+
+  session)
+    # Record a live session
+    NAME="${2:-session-$(date +%Y%m%d-%H%M)}"
+    SECS="${3:-60}"
+    CAST="$RECORD_DIR/$NAME.cast"
+
+    echo "🎬 Recording live session: $NAME ($SECS seconds)"
+    asciinema rec --idle-time-limit 2 --title "Obsidian AI — $NAME" "$CAST"
+    echo "✅ Session saved: $CAST"
+    ;;
+
+  list)
+    echo "🎬 Recordings:"
+    if [ -d "$RECORD_DIR" ]; then
+      ls -lh "$RECORD_DIR"/*.cast 2>/dev/null || echo "   No recordings yet."
+    fi
+    ;;
+
+  upload)
+    NAME="${2:-}"
+    if [ -z "$NAME" ]; then
+      echo "Usage: xrecord upload <name>"
+      exit 1
+    fi
+    CAST="$RECORD_DIR/$NAME.cast"
+    if [ ! -f "$CAST" ]; then
+      echo "Recording not found: $CAST"
+      exit 1
+    fi
+    echo "📤 Uploading $NAME to asciinema.org..."
+    asciinema upload "$CAST"
+    ;;
+
+  svg)
+    # Convert to SVG animation using svg-term if available
+    NAME="${2:-}"
+    if [ -z "$NAME" ]; then
+      echo "Usage: xrecord svg <name>"
+      exit 1
+    fi
+    CAST="$RECORD_DIR/$NAME.cast"
+    SVG="$RECORD_DIR/$NAME.svg"
+    if command -v svg-term &>/dev/null; then
+      svg-term --in "$CAST" --out "$SVG" --window --no-cursor
+      echo "✅ SVG saved: $SVG"
+    else
+      echo "svg-term not installed. Install: npm install -g svg-term-cli"
+    fi
+    ;;
+
+  help|*)
+    echo "xrecord — Agent activity recorder"
+    echo ""
+    echo "Usage:"
+    echo "  xrecord demo [name]           Scripted demo of agent tools"
+    echo "  xrecord snapshot              Quick 30s status recording"
+    echo "  xrecord session [name] [sec]  Record live session"
+    echo "  xrecord list                  List recordings"
+    echo "  xrecord upload <name>         Upload to asciinema.org"
+    echo "  xrecord svg <name>            Convert to SVG animation"
+    ;;
+esac

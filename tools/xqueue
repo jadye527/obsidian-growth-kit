@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""xqueue — Tweet scheduler.
+Queues tweets and posts them at intervals to avoid spam filters.
+"""
+import sys, os, json, time, subprocess
+
+QUEUE_FILE = os.environ.get("X_QUEUE_FILE", os.path.expanduser("~/.config/x-api/queue.json"))
+MIN_INTERVAL = 900  # 15 minutes between tweets (safe for new accounts)
+
+def load_queue():
+    if os.path.exists(QUEUE_FILE):
+        with open(QUEUE_FILE) as f:
+            return json.load(f)
+    return {"tweets": [], "last_posted": 0}
+
+def save_queue(q):
+    os.makedirs(os.path.dirname(QUEUE_FILE), exist_ok=True)
+    with open(QUEUE_FILE, "w") as f:
+        json.dump(q, f, indent=2)
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        print("xqueue — Tweet Scheduler")
+        print()
+        print("Usage:")
+        print("  xqueue add \"tweet text\"     Add tweet to queue")
+        print("  xqueue list                  Show queued tweets")
+        print("  xqueue flush                 Post all queued tweets (with delays)")
+        print("  xqueue next                  Post the next queued tweet if cooldown passed")
+        print("  xqueue clear                 Clear the queue")
+        print("  xqueue count                 Show queue size")
+        return
+
+    cmd = args[0]
+    q = load_queue()
+
+    if cmd == "add":
+        text = args[1] if len(args) > 1 else None
+        if not text:
+            print("Usage: xqueue add \"tweet text\"", file=sys.stderr)
+            sys.exit(1)
+        q["tweets"].append({"text": text, "added": int(time.time())})
+        save_queue(q)
+        print(f"Queued. ({len(q['tweets'])} in queue)")
+
+    elif cmd == "list":
+        if not q["tweets"]:
+            print("Queue empty.")
+        else:
+            for i, t in enumerate(q["tweets"]):
+                preview = t["text"][:80].replace("\n", " ")
+                print(f"  {i+1}. {preview}...")
+
+    elif cmd == "count":
+        print(len(q["tweets"]))
+
+    elif cmd == "clear":
+        q["tweets"] = []
+        save_queue(q)
+        print("Queue cleared.")
+
+    elif cmd == "next":
+        if not q["tweets"]:
+            print("Queue empty.")
+            return
+        elapsed = int(time.time()) - q.get("last_posted", 0)
+        if elapsed < MIN_INTERVAL:
+            remaining = MIN_INTERVAL - elapsed
+            print(f"Cooldown: {remaining}s remaining")
+            return
+        tweet = q["tweets"].pop(0)
+        try:
+            result = subprocess.run(
+                ["xpost", "tweet", tweet["text"]],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode == 0:
+                q["last_posted"] = int(time.time())
+                save_queue(q)
+                print(result.stdout.strip())
+            else:
+                # Put it back if it failed
+                q["tweets"].insert(0, tweet)
+                save_queue(q)
+                print(f"Failed: {result.stderr.strip()}", file=sys.stderr)
+                sys.exit(1)
+        except Exception as e:
+            q["tweets"].insert(0, tweet)
+            save_queue(q)
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    elif cmd == "flush":
+        if not q["tweets"]:
+            print("Queue empty.")
+            return
+        count = len(q["tweets"])
+        print(f"Flushing {count} tweets (15-min intervals)...")
+        posted = 0
+        while q["tweets"]:
+            elapsed = int(time.time()) - q.get("last_posted", 0)
+            if elapsed < MIN_INTERVAL:
+                wait = MIN_INTERVAL - elapsed
+                print(f"  Waiting {wait}s...")
+                time.sleep(wait)
+            tweet = q["tweets"].pop(0)
+            try:
+                result = subprocess.run(
+                    ["xpost", "tweet", tweet["text"]],
+                    capture_output=True, text=True, timeout=30
+                )
+                if result.returncode == 0:
+                    q["last_posted"] = int(time.time())
+                    save_queue(q)
+                    posted += 1
+                    print(f"  [{posted}/{count}] {result.stdout.strip()}")
+                else:
+                    q["tweets"].insert(0, tweet)
+                    save_queue(q)
+                    print(f"  Failed — retrying after longer cooldown")
+                    time.sleep(MIN_INTERVAL)
+            except Exception as e:
+                q["tweets"].insert(0, tweet)
+                save_queue(q)
+                print(f"  Error: {e}")
+                break
+        print(f"Done. Posted {posted}/{count}.")
+
+    else:
+        print(f"Unknown command: {cmd}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

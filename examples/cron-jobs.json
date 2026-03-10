@@ -1,0 +1,77 @@
+{
+  "description": "Copy these jobs into your ~/.openclaw/cron/jobs.json to automate X growth",
+  "jobs": [
+    {
+      "id": "x-morning-growth",
+      "name": "x-morning-growth",
+      "description": "Morning X growth: post content, engage with niche accounts, implement one new growth tactic",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 8 * * *",
+        "tz": "America/New_York"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "next-heartbeat",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Morning X Growth Routine:\n1. Run xanalytics snapshot\n2. Run xanalytics compare\n3. Queue 4-5 new posts for today\n4. Implement ONE new growth improvement\n5. Start drip loop if not running\n6. Log what you did to daily notes",
+        "thinking": "low"
+      }
+    },
+    {
+      "id": "x-content-scout",
+      "name": "x-content-scout",
+      "description": "Content scout: find high-engagement tweets, like viral content, queue reactive posts",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "23 9,12,15,18 * * *",
+        "tz": "America/New_York"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "next-heartbeat",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run xscout report. Like tweets with 50+ likes. For tweets with 20+ likes, craft a post referencing the same topic. If queue below 3, add new posts.",
+        "thinking": "low"
+      }
+    },
+    {
+      "id": "x-nightly-review",
+      "name": "x-nightly-review",
+      "description": "Nightly analytics review and strategy adjustment",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 22 * * *",
+        "tz": "America/New_York"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "next-heartbeat",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Nightly review:\n1. Run xgrowth report\n2. Run xanalytics compare\n3. Identify best/worst post types\n4. Log strategy results\n5. Queue 2-3 posts for tomorrow morning\n6. Propose one new tactic for tomorrow",
+        "thinking": "low"
+      }
+    },
+    {
+      "id": "x-analytics-snapshot",
+      "name": "x-analytics-snapshot",
+      "description": "Take X analytics snapshot every 4 hours for tracking",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 8,12,16,20 * * *",
+        "tz": "America/New_York"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "next-heartbeat",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run xanalytics snapshot. Report the numbers.",
+        "thinking": "low"
+      }
+    }
+  ]
+}

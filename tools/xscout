@@ -1,0 +1,296 @@
+#!/usr/bin/env python3
+"""xscout — Content scout for @YourHandle.
+Finds high-engagement tweets, threads, and content aligned with our topics.
+Outputs opportunities for quoting, replying, and reposting.
+
+Usage:
+  xscout scan              Full scan across all topics
+  xscout scan --topic X    Scan specific topic
+  xscout viral             Find viral content (>50 likes) in our space
+  xscout opportunities     Find reply opportunities on active threads
+  xscout report            Generate formatted report of best finds
+"""
+import sys, os, json, subprocess
+from datetime import datetime, timezone
+
+TOPICS = {
+    "prediction-markets": [
+        "polymarket prediction market",
+        "prediction markets AI",
+        "polymarket weather",
+        "CFTC prediction markets",
+        "kalshi polymarket",
+    ],
+    "ai-agents": [
+        "AI agent autonomous trading",
+        "openclaw AI agent",
+        "AI CEO company",
+        "autonomous AI operations",
+        "AI agent production deployment",
+    ],
+    "build-in-public": [
+        "build in public AI",
+        "transparent P&L trading",
+        "AI startup day",
+        "zero human company",
+        "nateliason felix AI",
+    ],
+    "weather-trading": [
+        "weather trading prediction",
+        "METAR weather data",
+        "weather forecast trading",
+        "polymarket temperature",
+    ],
+}
+
+MIN_LIKES_VIRAL = 50
+MIN_LIKES_OPPORTUNITY = 10
+RESULTS_FILE = os.path.expanduser("~/.config/x-api/scout-results.json")
+
+def xpost_search(query):
+    """Run xpost search and parse results."""
+    try:
+        result = subprocess.run(
+            ["xpost", "search", query],
+            capture_output=True, text=True, timeout=30
+        )
+        return parse_tweets(result.stdout)
+    except Exception as e:
+        return []
+
+def parse_tweets(output):
+    """Parse xpost output into structured tweet objects."""
+    tweets = []
+    lines = output.strip().split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if line.startswith("@") or line.startswith(" ·") or "· 2026-" in line or "· 2025-" in line:
+            # Header line with author and date
+            parts = line.split(" · ")
+            author = parts[0].strip() if len(parts) > 1 else ""
+            date = parts[1].strip() if len(parts) > 1 else ""
+            # Collect text lines until we hit the metrics line
+            text_lines = []
+            i += 1
+            likes = rts = replies = 0
+            tweet_id = ""
+            while i < len(lines):
+                l = lines[i].strip()
+                if l.startswith("♥"):
+                    # Parse metrics: ♥ 694  🔁 98  💬 54  id:2029180056627822818
+                    import re
+                    m = re.findall(r'♥\s*(\d+)', l)
+                    likes = int(m[0]) if m else 0
+                    m = re.findall(r'🔁\s*(\d+)', l)
+                    rts = int(m[0]) if m else 0
+                    m = re.findall(r'💬\s*(\d+)', l)
+                    replies = int(m[0]) if m else 0
+                    m = re.findall(r'id:(\d+)', l)
+                    tweet_id = m[0] if m else ""
+                    i += 1
+                    break
+                elif l == "---":
+                    i += 1
+                    break
+                else:
+                    text_lines.append(l)
+                    i += 1
+            tweets.append({
+                "author": author,
+                "date": date,
+                "text": "\n".join(text_lines),
+                "likes": likes,
+                "retweets": rts,
+                "replies": replies,
+                "id": tweet_id,
+                "engagement": likes + rts * 3 + replies * 5,  # weighted score
+            })
+        elif l := line:
+            if line == "---":
+                i += 1
+                continue
+            i += 1
+        else:
+            i += 1
+    return tweets
+
+def scan(topic_filter=None):
+    """Scan all topics for high-engagement content."""
+    all_results = []
+    topics = {topic_filter: TOPICS[topic_filter]} if topic_filter and topic_filter in TOPICS else TOPICS
+
+    for topic, queries in topics.items():
+        for query in queries:
+            tweets = xpost_search(query)
+            for t in tweets:
+                t["topic"] = topic
+                t["query"] = query
+                # Skip our own tweets and RTs (they show 0 engagement)
+                if "@YourHandle" in t.get("author", ""):
+                    continue
+                if t.get("text", "").startswith("RT @"):
+                    continue
+                all_results.append(t)
+
+    # Deduplicate by tweet ID
+    seen = set()
+    unique = []
+    for t in all_results:
+        if t["id"] and t["id"] not in seen:
+            seen.add(t["id"])
+            unique.append(t)
+
+    # Sort by engagement score
+    unique.sort(key=lambda x: x["engagement"], reverse=True)
+    return unique
+
+def find_viral(results=None):
+    """Filter for viral content (>50 likes)."""
+    if results is None:
+        results = scan()
+    return [t for t in results if t["likes"] >= MIN_LIKES_VIRAL]
+
+def find_opportunities(results=None):
+    """Find reply opportunities — active threads with decent engagement."""
+    if results is None:
+        results = scan()
+    # Good reply targets: 10+ likes, have replies (active conversation)
+    opps = [t for t in results if t["likes"] >= MIN_LIKES_OPPORTUNITY and t["replies"] >= 1]
+    return opps
+
+def format_tweet(t, idx=None):
+    """Pretty print a tweet finding."""
+    prefix = f"  {idx}." if idx else "  •"
+    score = t["engagement"]
+    print(f"{prefix} [{t['topic']}] Score: {score} (♥{t['likes']} 🔁{t['retweets']} 💬{t['replies']})")
+    print(f"     {t['author']} — {t['date']}")
+    text_preview = t['text'][:200] + "..." if len(t['text']) > 200 else t['text']
+    print(f"     {text_preview}")
+    if t['id']:
+        print(f"     → https://x.com/i/status/{t['id']}")
+    print()
+
+def save_results(results):
+    """Save scan results for later reference."""
+    os.makedirs(os.path.dirname(RESULTS_FILE), exist_ok=True)
+    data = {
+        "scanned_at": datetime.now(timezone.utc).isoformat(),
+        "count": len(results),
+        "results": results[:50],  # Keep top 50
+    }
+    with open(RESULTS_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+def suggest_actions(results):
+    """Suggest specific actions: quote, reply, or retweet."""
+    actions = []
+    for t in results[:10]:
+        if t["retweets"] >= 20 and t["likes"] >= 100:
+            action = "QUOTE — High visibility. Add our angle."
+        elif t["replies"] >= 5 and t["likes"] >= 20:
+            action = "REPLY — Active thread. Join with data/insight."
+        elif t["likes"] >= 50:
+            action = "RETWEET — Boost signal, align with their audience."
+        elif t["replies"] >= 2:
+            action = "REPLY — Conversation starter. Add value."
+        else:
+            action = "LIKE — Low-effort signal boost."
+        actions.append({**t, "suggested_action": action})
+    return actions
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        print(__doc__)
+        return
+
+    cmd = args[0]
+
+    if cmd == "scan":
+        topic = None
+        if "--topic" in args:
+            idx = args.index("--topic")
+            topic = args[idx + 1] if idx + 1 < len(args) else None
+
+        print(f"🔍 Scanning {'all topics' if not topic else topic}...")
+        print()
+        results = scan(topic)
+        save_results(results)
+
+        if not results:
+            print("No results found.")
+            return
+
+        print(f"Found {len(results)} tweets. Top 15 by engagement:\n")
+        for i, t in enumerate(results[:15], 1):
+            format_tweet(t, i)
+
+        viral = [t for t in results if t["likes"] >= MIN_LIKES_VIRAL]
+        if viral:
+            print(f"🔥 {len(viral)} viral tweets (>{MIN_LIKES_VIRAL} likes)")
+
+    elif cmd == "viral":
+        print("🔥 Scanning for viral content...\n")
+        results = scan()
+        viral = find_viral(results)
+        save_results(results)
+
+        if not viral:
+            print("No viral content found in current scan.")
+            return
+
+        print(f"Found {len(viral)} viral tweets:\n")
+        for i, t in enumerate(viral[:10], 1):
+            format_tweet(t, i)
+
+    elif cmd == "opportunities":
+        print("💬 Finding reply opportunities...\n")
+        results = scan()
+        opps = find_opportunities(results)
+        save_results(results)
+
+        if not opps:
+            print("No high-value reply opportunities found.")
+            return
+
+        print(f"Found {len(opps)} reply opportunities:\n")
+        for i, t in enumerate(opps[:10], 1):
+            format_tweet(t, i)
+
+    elif cmd == "report":
+        print("📋 CONTENT SCOUT REPORT")
+        print(f"   {datetime.now().strftime('%Y-%m-%d %H:%M ET')}")
+        print("=" * 50)
+        print()
+
+        results = scan()
+        save_results(results)
+        viral = find_viral(results)
+        opps = find_opportunities(results)
+        actions = suggest_actions(results)
+
+        print(f"📊 Scan Summary:")
+        print(f"   Total tweets found: {len(results)}")
+        print(f"   Viral (>{MIN_LIKES_VIRAL} likes): {len(viral)}")
+        print(f"   Reply opportunities: {len(opps)}")
+        print()
+
+        if actions:
+            print("🎯 Recommended Actions:\n")
+            for i, a in enumerate(actions[:8], 1):
+                print(f"  {i}. {a['suggested_action']}")
+                print(f"     {a['author']} (♥{a['likes']} 🔁{a['retweets']} 💬{a['replies']})")
+                text_preview = a['text'][:150] + "..." if len(a['text']) > 150 else a['text']
+                print(f"     {text_preview}")
+                if a['id']:
+                    print(f"     → https://x.com/i/status/{a['id']}")
+                print()
+
+    else:
+        print(f"Unknown command: {cmd}", file=sys.stderr)
+        print(__doc__)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

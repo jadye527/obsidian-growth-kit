@@ -1,0 +1,2 @@
+tweepy>=4.14.0
+asciinema>=2.4.0
