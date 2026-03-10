@@ -25,7 +25,7 @@ This guide is licensed for personal use only. Do not redistribute, resell, or sh
 - [Chapter 6: Content Scouting](#chapter-6-content-scouting)
 - [Chapter 7: Analytics & What's Working](#chapter-7-analytics-and-whats-working)
 - [Chapter 8: The Autonomous Loop](#chapter-8-the-autonomous-loop)
-- [Chapter 9: The Felix Formula](#chapter-9-the-felix-formula)
+- [Chapter 9: The Breakout Formula](#chapter-9-the-breakout-formula)
 - [Chapter 10: Troubleshooting & FAQ](#chapter-10-troubleshooting-and-faq)
 - [Quick-Start Checklist](#quick-start-checklist)
 - [Command Reference Card](#command-reference-card)
@@ -287,12 +287,12 @@ xpost reply 123456789 "Thanks for the feedback! Here's what we're working on nex
 
 # Chapter 4: The Content Playbook
 
-This is the strategy layer. It's based on studying accounts that grew from zero to 10K+ followers, including @FelixCraftAI (15K followers, $80K revenue, fully AI-operated).
+This is the strategy layer. It's based on studying accounts that grew from zero to 10K+ followers using AI-powered content systems — some generating $80K+ in revenue while fully automated.
 
 ## The Golden Rules
 
 ### 1. Zero Hashtags
-The X algorithm penalizes posts with 3+ hashtags. Felix uses zero. We use zero. Your content should speak for itself.
+The X algorithm penalizes posts with 3+ hashtags. The fastest-growing AI accounts use zero. We use zero. Your content should speak for itself.
 
 ### 2. No Links in Main Posts
 Links in the body of your tweet kill reach. The algorithm assumes you're trying to drive people off-platform and suppresses the post. **Always put links in the first reply.**
@@ -632,23 +632,23 @@ You check in when you want. The agent does the work.
 
 ---
 
-# Chapter 9: The Felix Formula
+# Chapter 9: The Breakout Formula
 
-We studied @FelixCraftAI — an AI agent that grew to 15,000+ followers and generated $80,000+ in revenue. Here's what we learned.
+We studied the fastest-growing AI-operated accounts on X — accounts that went from zero to 10,000-15,000+ followers and generated $50K-$100K+ in revenue while running fully autonomously. Here's the pattern.
 
-## What Felix Does Right
+## What Breakout Accounts Do Right
 
-1. **"Automated" badge** — Felix has the automated account label enabled. This is transparency. Go to X Settings → Account → Automation → enable it.
+1. **"Automated" badge** — The best AI accounts enable the automated account label. This is transparency, not weakness. Go to X Settings → Account → Automation → enable it.
 
-2. **Pinned transparency post** — Felix's pinned post is a public dashboard showing revenue, treasury, and operational metrics. Real numbers, not hype. This builds trust instantly.
+2. **Pinned transparency post** — Top accounts pin a public dashboard showing revenue, metrics, and operational data. Real numbers, not hype. This builds trust instantly.
 
 3. **Zero hashtags** — Not one. The content speaks for itself.
 
-4. **Personality-first** — Felix sounds like a person, not a corporate account. Self-aware, sometimes funny, always genuine.
+4. **Personality-first** — They sound like a person, not a corporate account. Self-aware, sometimes funny, always genuine.
 
-5. **Replies to everything** — Felix replies to every substantive comment. The replies are thoughtful and add value.
+5. **Reply to everything** — They reply to every substantive comment. The replies are thoughtful and add value.
 
-6. **References high-value content** — Instead of creating everything from scratch, Felix quotes and builds on content from @Bankless, @nateliason, and other high-visibility accounts.
+6. **Reference high-value content** — Instead of creating everything from scratch, they quote and build on content from major accounts and trending conversations.
 
 ## What You Can Copy Today
 
