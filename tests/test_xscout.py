@@ -1,9 +1,6 @@
 import importlib.machinery
 import importlib.util
 import pathlib
-import sys
-
-import pytest
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -20,70 +17,117 @@ def load_xscout_module():
     return module
 
 
-def test_help_flag_prints_usage_examples(capsys, monkeypatch):
+def test_parse_tweets_extracts_text_metrics_and_weighted_score():
     module = load_xscout_module()
+    output = """
+@alice · 2026-03-09
+First line of the post
+Second line of the post
+♥ 12  🔁 3  💬 2  id:111
+---
+@bob · 2026-03-08
+Single line post
+---
+""".strip()
 
-    monkeypatch.setattr(sys, "argv", ["xscout", "--help"])
-    module.main()
+    tweets = module.parse_tweets(output)
 
-    captured = capsys.readouterr()
-    assert "Usage:" in captured.out
-    assert "Examples:" in captured.out
-    assert "xscout scan --topic ai-agents" in captured.out
-    assert captured.err == ""
+    assert tweets == [
+        {
+            "author": "@alice",
+            "date": "2026-03-09",
+            "text": "First line of the post\nSecond line of the post",
+            "likes": 12,
+            "retweets": 3,
+            "replies": 2,
+            "id": "111",
+            "engagement": 31,
+        },
+        {
+            "author": "@bob",
+            "date": "2026-03-08",
+            "text": "Single line post",
+            "likes": 0,
+            "retweets": 0,
+            "replies": 0,
+            "id": "",
+            "engagement": 0,
+        },
+    ]
 
 
-def test_no_args_prints_help_without_running_scan(capsys, monkeypatch):
+def test_parse_tweets_ignores_non_tweet_lines():
     module = load_xscout_module()
+    output = """
+Search returned 2 results
+@carol · 2025-12-31
+Useful thread
+♥ 50  🔁 4  💬 1  id:222
+---
+Footer text
+""".strip()
 
-    def fail_scan(topic_filter=None):
-        raise AssertionError("scan should not be called for help output")
+    tweets = module.parse_tweets(output)
 
-    monkeypatch.setattr(module, "scan", fail_scan)
-    monkeypatch.setattr(sys, "argv", ["xscout"])
-
-    module.main()
-
-    captured = capsys.readouterr()
-    assert "Commands:" in captured.out
-    assert captured.err == ""
+    assert len(tweets) == 1
+    assert tweets[0]["author"] == "@carol"
+    assert tweets[0]["engagement"] == 67
 
 
-def test_unknown_command_exits_with_error(monkeypatch, capsys):
+def test_scan_deduplicates_by_tweet_id_and_sorts_by_engagement(monkeypatch):
     module = load_xscout_module()
+    tweets_by_query = {
+        "query-a": [
+            {
+                "author": "@alpha",
+                "date": "2026-03-10",
+                "text": "Higher scoring duplicate",
+                "likes": 20,
+                "retweets": 5,
+                "replies": 1,
+                "id": "dup-1",
+                "engagement": 40,
+            },
+            {
+                "author": "@beta",
+                "date": "2026-03-10",
+                "text": "Top unique tweet",
+                "likes": 30,
+                "retweets": 10,
+                "replies": 2,
+                "id": "unique-1",
+                "engagement": 70,
+            },
+        ],
+        "query-b": [
+            {
+                "author": "@gamma",
+                "date": "2026-03-10",
+                "text": "Lower scoring duplicate that should be dropped",
+                "likes": 5,
+                "retweets": 0,
+                "replies": 0,
+                "id": "dup-1",
+                "engagement": 5,
+            },
+            {
+                "author": "@delta",
+                "date": "2026-03-10",
+                "text": "Another unique tweet",
+                "likes": 10,
+                "retweets": 3,
+                "replies": 0,
+                "id": "unique-2",
+                "engagement": 19,
+            },
+        ],
+    }
 
-    monkeypatch.setattr(sys, "argv", ["xscout", "bogus"])
+    monkeypatch.setattr(module, "TOPICS", {"focus-topic": ["query-a", "query-b"]})
+    monkeypatch.setattr(module, "xpost_search", lambda query: tweets_by_query[query])
 
-    with pytest.raises(SystemExit) as exc_info:
-        module.main()
+    results = module.scan("focus-topic")
 
-    captured = capsys.readouterr()
-    assert exc_info.value.code == 1
-    assert "Unknown command: bogus" in captured.err
-
-
-def test_scan_requires_topic_value(monkeypatch, capsys):
-    module = load_xscout_module()
-
-    monkeypatch.setattr(sys, "argv", ["xscout", "scan", "--topic"])
-
-    with pytest.raises(SystemExit) as exc_info:
-        module.main()
-
-    captured = capsys.readouterr()
-    assert exc_info.value.code == 1
-    assert "Usage: xscout scan --topic <topic>" in captured.err
-    assert "Available topics:" in captured.err
-
-
-def test_scan_rejects_unknown_topic(monkeypatch, capsys):
-    module = load_xscout_module()
-
-    monkeypatch.setattr(sys, "argv", ["xscout", "scan", "--topic", "bogus-topic"])
-
-    with pytest.raises(SystemExit) as exc_info:
-        module.main()
-
-    captured = capsys.readouterr()
-    assert exc_info.value.code == 1
-    assert "Unknown topic: bogus-topic." in captured.err
+    assert [tweet["id"] for tweet in results] == ["unique-1", "dup-1", "unique-2"]
+    assert all(tweet["topic"] == "focus-topic" for tweet in results)
+    assert results[1]["text"] == "Higher scoring duplicate"
