@@ -6,8 +6,8 @@ Improve code quality, add tests, and set up CI for the Obsidian Growth Kit — a
 ## Requirements
 
 ### Code Quality
-- [ ] Add `--help` flag with usage examples to `tools/xpost` (argparse or manual)
-- [ ] Add `--help` flag with usage examples to `tools/xqueue`
+- [x] Add `--help` flag with usage examples to `tools/xpost` (argparse or manual)
+- [x] Add `--help` flag with usage examples to `tools/xqueue`
 - [ ] Add `--help` flag with usage examples to `tools/xanalytics`
 - [ ] Add `--help` flag with usage examples to `tools/xscout`
 - [ ] Add `--help` flag with usage examples to `tools/xgrowth`

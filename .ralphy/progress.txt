@@ -1,2 +1,4 @@
 # Ralphy Progress Log
 
+- [✓] 2026-03-10 21:18 - Add `--help` flag with usage examples to `tools/xpost` (argparse or manual)
+- [✓] 2026-03-10 21:21 - Add `--help` flag with usage examples to `tools/xqueue`
