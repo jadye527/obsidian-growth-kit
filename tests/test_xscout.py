@@ -1,24 +1,5 @@
-import importlib.machinery
-import importlib.util
-import pathlib
-
-
-ROOT = pathlib.Path(__file__).resolve().parents[1]
-XSCOUT_PATH = ROOT / "tools" / "xscout"
-
-
-def load_xscout_module():
-    loader = importlib.machinery.SourceFileLoader("xscout_module", str(XSCOUT_PATH))
-    spec = importlib.util.spec_from_loader("xscout_module", loader)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
-
-def test_parse_tweets_extracts_text_metrics_and_weighted_score():
-    module = load_xscout_module()
+def test_parse_tweets_extracts_text_metrics_and_weighted_score(load_tool_module):
+    module = load_tool_module("xscout")
     output = """
 @alice · 2026-03-09
 First line of the post
@@ -56,8 +37,8 @@ Single line post
     ]
 
 
-def test_parse_tweets_ignores_non_tweet_lines():
-    module = load_xscout_module()
+def test_parse_tweets_ignores_non_tweet_lines(load_tool_module):
+    module = load_tool_module("xscout")
     output = """
 Search returned 2 results
 @carol · 2025-12-31
@@ -74,52 +55,47 @@ Footer text
     assert tweets[0]["engagement"] == 67
 
 
-def test_scan_deduplicates_by_tweet_id_and_sorts_by_engagement(monkeypatch):
-    module = load_xscout_module()
+def test_scan_deduplicates_by_tweet_id_and_sorts_by_engagement(
+    monkeypatch, load_tool_module, make_scout_tweet
+):
+    module = load_tool_module("xscout")
     tweets_by_query = {
         "query-a": [
-            {
-                "author": "@alpha",
-                "date": "2026-03-10",
-                "text": "Higher scoring duplicate",
-                "likes": 20,
-                "retweets": 5,
-                "replies": 1,
-                "id": "dup-1",
-                "engagement": 40,
-            },
-            {
-                "author": "@beta",
-                "date": "2026-03-10",
-                "text": "Top unique tweet",
-                "likes": 30,
-                "retweets": 10,
-                "replies": 2,
-                "id": "unique-1",
-                "engagement": 70,
-            },
+            make_scout_tweet(
+                author="@alpha",
+                text="Higher scoring duplicate",
+                likes=20,
+                retweets=5,
+                replies=1,
+                tweet_id="dup-1",
+                engagement=40,
+            ),
+            make_scout_tweet(
+                author="@beta",
+                text="Top unique tweet",
+                likes=30,
+                retweets=10,
+                replies=2,
+                tweet_id="unique-1",
+                engagement=70,
+            ),
         ],
         "query-b": [
-            {
-                "author": "@gamma",
-                "date": "2026-03-10",
-                "text": "Lower scoring duplicate that should be dropped",
-                "likes": 5,
-                "retweets": 0,
-                "replies": 0,
-                "id": "dup-1",
-                "engagement": 5,
-            },
-            {
-                "author": "@delta",
-                "date": "2026-03-10",
-                "text": "Another unique tweet",
-                "likes": 10,
-                "retweets": 3,
-                "replies": 0,
-                "id": "unique-2",
-                "engagement": 19,
-            },
+            make_scout_tweet(
+                author="@gamma",
+                text="Lower scoring duplicate that should be dropped",
+                likes=5,
+                tweet_id="dup-1",
+                engagement=5,
+            ),
+            make_scout_tweet(
+                author="@delta",
+                text="Another unique tweet",
+                likes=10,
+                retweets=3,
+                tweet_id="unique-2",
+                engagement=19,
+            ),
         ],
     }
 

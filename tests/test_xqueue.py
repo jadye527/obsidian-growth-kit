@@ -1,28 +1,11 @@
-import importlib.machinery
-import importlib.util
-import pathlib
 import sys
 import types
 
 import pytest
 
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
-XQUEUE_PATH = ROOT / "tools" / "xqueue"
-
-
-def load_xqueue_module():
-    loader = importlib.machinery.SourceFileLoader("xqueue_module", str(XQUEUE_PATH))
-    spec = importlib.util.spec_from_loader("xqueue_module", loader)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
-
-def test_help_flag_prints_usage_examples(capsys, monkeypatch):
-    module = load_xqueue_module()
+def test_help_flag_prints_usage_examples(capsys, monkeypatch, load_tool_module):
+    module = load_tool_module("xqueue")
 
     monkeypatch.setattr(sys, "argv", ["xqueue", "--help"])
     module.main()
@@ -34,8 +17,10 @@ def test_help_flag_prints_usage_examples(capsys, monkeypatch):
     assert captured.err == ""
 
 
-def test_no_args_prints_help_without_loading_queue(capsys, monkeypatch):
-    module = load_xqueue_module()
+def test_no_args_prints_help_without_loading_queue(
+    capsys, monkeypatch, load_tool_module
+):
+    module = load_tool_module("xqueue")
 
     def fail_load_queue():
         raise AssertionError("load_queue should not be called for help output")
@@ -50,8 +35,8 @@ def test_no_args_prints_help_without_loading_queue(capsys, monkeypatch):
     assert captured.err == ""
 
 
-def test_unknown_command_exits_with_error(monkeypatch, capsys):
-    module = load_xqueue_module()
+def test_unknown_command_exits_with_error(monkeypatch, capsys, load_tool_module):
+    module = load_tool_module("xqueue")
 
     monkeypatch.setattr(sys, "argv", ["xqueue", "bogus"])
     monkeypatch.setattr(module, "load_queue", lambda: {"tweets": [], "last_posted": 0})
@@ -64,8 +49,10 @@ def test_unknown_command_exits_with_error(monkeypatch, capsys):
     assert "Unknown command: bogus" in captured.err
 
 
-def test_load_queue_error_exits_with_actionable_message(monkeypatch, capsys):
-    module = load_xqueue_module()
+def test_load_queue_error_exits_with_actionable_message(
+    monkeypatch, capsys, load_tool_module
+):
+    module = load_tool_module("xqueue")
 
     monkeypatch.setattr(sys, "argv", ["xqueue", "list"])
     monkeypatch.setattr(
@@ -85,8 +72,10 @@ def test_load_queue_error_exits_with_actionable_message(monkeypatch, capsys):
     assert "Unable to read queue file" in captured.err
 
 
-def test_save_queue_error_on_add_exits_with_actionable_message(monkeypatch, capsys):
-    module = load_xqueue_module()
+def test_save_queue_error_on_add_exits_with_actionable_message(
+    monkeypatch, capsys, load_tool_module
+):
+    module = load_tool_module("xqueue")
 
     monkeypatch.setattr(sys, "argv", ["xqueue", "add", "hello"])
     monkeypatch.setattr(module, "load_queue", lambda: {"tweets": [], "last_posted": 0})
@@ -107,11 +96,13 @@ def test_save_queue_error_on_add_exits_with_actionable_message(monkeypatch, caps
     assert "Unable to write queue file" in captured.err
 
 
-def test_next_on_empty_queue_prints_message(monkeypatch, capsys):
-    module = load_xqueue_module()
+def test_next_on_empty_queue_prints_message(
+    monkeypatch, capsys, load_tool_module, make_queue
+):
+    module = load_tool_module("xqueue")
 
     monkeypatch.setattr(sys, "argv", ["xqueue", "next"])
-    monkeypatch.setattr(module, "load_queue", lambda: {"tweets": [], "last_posted": 0})
+    monkeypatch.setattr(module, "load_queue", lambda: make_queue())
 
     module.main()
 
@@ -120,11 +111,13 @@ def test_next_on_empty_queue_prints_message(monkeypatch, capsys):
     assert captured.err == ""
 
 
-def test_flush_on_empty_queue_prints_message(monkeypatch, capsys):
-    module = load_xqueue_module()
+def test_flush_on_empty_queue_prints_message(
+    monkeypatch, capsys, load_tool_module, make_queue
+):
+    module = load_tool_module("xqueue")
 
     monkeypatch.setattr(sys, "argv", ["xqueue", "flush"])
-    monkeypatch.setattr(module, "load_queue", lambda: {"tweets": [], "last_posted": 0})
+    monkeypatch.setattr(module, "load_queue", lambda: make_queue())
 
     module.main()
 
@@ -133,12 +126,14 @@ def test_flush_on_empty_queue_prints_message(monkeypatch, capsys):
     assert captured.err == ""
 
 
-def test_add_appends_tweet_and_saves_queue(monkeypatch, capsys):
-    module = load_xqueue_module()
+def test_add_appends_tweet_and_saves_queue(
+    monkeypatch, capsys, load_tool_module, make_queue, make_queue_tweet
+):
+    module = load_tool_module("xqueue")
     saved_queue = {}
 
     monkeypatch.setattr(sys, "argv", ["xqueue", "add", "ship it"])
-    monkeypatch.setattr(module, "load_queue", lambda: {"tweets": [], "last_posted": 0})
+    monkeypatch.setattr(module, "load_queue", lambda: make_queue())
     monkeypatch.setattr(module.time, "time", lambda: 1234)
 
     def fake_save_queue(queue):
@@ -151,26 +146,24 @@ def test_add_appends_tweet_and_saves_queue(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert captured.out.strip() == "Queued. (1 in queue)"
     assert captured.err == ""
-    assert saved_queue["value"] == {
-        "tweets": [{"text": "ship it", "added": 1234}],
-        "last_posted": 0,
-    }
+    assert saved_queue["value"] == make_queue(
+        make_queue_tweet("ship it", 1234),
+    )
 
 
-def test_list_prints_numbered_queue_entries(monkeypatch, capsys):
-    module = load_xqueue_module()
+def test_list_prints_numbered_queue_entries(
+    monkeypatch, capsys, load_tool_module, make_queue, make_queue_tweet
+):
+    module = load_tool_module("xqueue")
 
     monkeypatch.setattr(sys, "argv", ["xqueue", "list"])
     monkeypatch.setattr(
         module,
         "load_queue",
-        lambda: {
-            "tweets": [
-                {"text": "first queued tweet", "added": 1},
-                {"text": "second line\nwith newline", "added": 2},
-            ],
-            "last_posted": 0,
-        },
+        lambda: make_queue(
+            make_queue_tweet("first queued tweet", 1),
+            make_queue_tweet("second line\nwith newline", 2),
+        ),
     )
 
     module.main()
@@ -181,14 +174,19 @@ def test_list_prints_numbered_queue_entries(monkeypatch, capsys):
     assert captured.err == ""
 
 
-def test_count_prints_queue_size(monkeypatch, capsys):
-    module = load_xqueue_module()
+def test_count_prints_queue_size(
+    monkeypatch, capsys, load_tool_module, make_queue, make_queue_tweet
+):
+    module = load_tool_module("xqueue")
 
     monkeypatch.setattr(sys, "argv", ["xqueue", "count"])
     monkeypatch.setattr(
         module,
         "load_queue",
-        lambda: {"tweets": [{"text": "a"}, {"text": "b"}], "last_posted": 0},
+        lambda: make_queue(
+            make_queue_tweet("a"),
+            make_queue_tweet("b"),
+        ),
     )
 
     module.main()
@@ -198,18 +196,20 @@ def test_count_prints_queue_size(monkeypatch, capsys):
     assert captured.err == ""
 
 
-def test_next_respects_cooldown(monkeypatch, capsys):
-    module = load_xqueue_module()
+def test_next_respects_cooldown(
+    monkeypatch, capsys, load_tool_module, make_queue, make_queue_tweet
+):
+    module = load_tool_module("xqueue")
 
     monkeypatch.setattr(sys, "argv", ["xqueue", "next"])
     monkeypatch.setattr(module.time, "time", lambda: 1000)
     monkeypatch.setattr(
         module,
         "load_queue",
-        lambda: {
-            "tweets": [{"text": "queued tweet", "added": 10}],
-            "last_posted": 100,
-        },
+        lambda: make_queue(
+            make_queue_tweet("queued tweet", 10),
+            last_posted=100,
+        ),
     )
 
     def fail_run(*args, **kwargs):
@@ -224,15 +224,14 @@ def test_next_respects_cooldown(monkeypatch, capsys):
     assert captured.err == ""
 
 
-def test_flush_posts_all_tweets_and_sleeps_for_cooldown(monkeypatch, capsys):
-    module = load_xqueue_module()
-    queue = {
-        "tweets": [
-            {"text": "first tweet", "added": 1},
-            {"text": "second tweet", "added": 2},
-        ],
-        "last_posted": 0,
-    }
+def test_flush_posts_all_tweets_and_sleeps_for_cooldown(
+    monkeypatch, capsys, load_tool_module, make_queue, make_queue_tweet
+):
+    module = load_tool_module("xqueue")
+    queue = make_queue(
+        make_queue_tweet("first tweet", 1),
+        make_queue_tweet("second tweet", 2),
+    )
     saved_states = []
     posted_texts = []
     sleep_calls = []
@@ -241,7 +240,9 @@ def test_flush_posts_all_tweets_and_sleeps_for_cooldown(monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["xqueue", "flush"])
     monkeypatch.setattr(module, "load_queue", lambda: queue)
     monkeypatch.setattr(module.time, "time", lambda: next(time_values))
-    monkeypatch.setattr(module.time, "sleep", lambda seconds: sleep_calls.append(seconds))
+    monkeypatch.setattr(
+        module.time, "sleep", lambda seconds: sleep_calls.append(seconds)
+    )
 
     def fake_save_queue(current_queue):
         saved_states.append(
@@ -253,7 +254,11 @@ def test_flush_posts_all_tweets_and_sleeps_for_cooldown(monkeypatch, capsys):
 
     def fake_run(args, capture_output, text, timeout):
         posted_texts.append(args[2])
-        return types.SimpleNamespace(returncode=0, stdout=f"posted {args[2]}", stderr="")
+        return types.SimpleNamespace(
+            returncode=0,
+            stdout=f"posted {args[2]}",
+            stderr="",
+        )
 
     monkeypatch.setattr(module, "save_queue", fake_save_queue)
     monkeypatch.setattr(module.subprocess, "run", fake_run)

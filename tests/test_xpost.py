@@ -1,28 +1,11 @@
-import importlib.util
-import importlib.machinery
-import pathlib
-import types
 import sys
+import types
 
 import pytest
 
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
-XPOST_PATH = ROOT / "tools" / "xpost"
-
-
-def load_xpost_module():
-    loader = importlib.machinery.SourceFileLoader("xpost_module", str(XPOST_PATH))
-    spec = importlib.util.spec_from_loader("xpost_module", loader)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
-
-def test_help_flag_prints_usage_examples(capsys, monkeypatch):
-    module = load_xpost_module()
+def test_help_flag_prints_usage_examples(capsys, monkeypatch, load_tool_module):
+    module = load_tool_module("xpost")
 
     monkeypatch.setattr(sys, "argv", ["xpost", "--help"])
     module.main()
@@ -34,8 +17,10 @@ def test_help_flag_prints_usage_examples(capsys, monkeypatch):
     assert captured.err == ""
 
 
-def test_no_args_prints_help_without_loading_keys(capsys, monkeypatch):
-    module = load_xpost_module()
+def test_no_args_prints_help_without_loading_keys(
+    capsys, monkeypatch, load_tool_module
+):
+    module = load_tool_module("xpost")
 
     def fail_load_keys():
         raise AssertionError("load_keys should not be called for help output")
@@ -50,8 +35,8 @@ def test_no_args_prints_help_without_loading_keys(capsys, monkeypatch):
     assert captured.err == ""
 
 
-def test_unknown_command_exits_with_error(monkeypatch, capsys):
-    module = load_xpost_module()
+def test_unknown_command_exits_with_error(monkeypatch, capsys, load_tool_module):
+    module = load_tool_module("xpost")
 
     monkeypatch.setattr(sys, "argv", ["xpost", "bogus"])
     monkeypatch.setattr(module, "load_keys", lambda: {})
@@ -65,8 +50,10 @@ def test_unknown_command_exits_with_error(monkeypatch, capsys):
     assert "Unknown command: bogus" in captured.err
 
 
-def test_missing_credentials_file_exits_with_actionable_error(monkeypatch, capsys):
-    module = load_xpost_module()
+def test_missing_credentials_file_exits_with_actionable_error(
+    monkeypatch, capsys, load_tool_module
+):
+    module = load_tool_module("xpost")
 
     monkeypatch.setattr(sys, "argv", ["xpost", "whoami"])
     monkeypatch.setattr(
@@ -86,8 +73,8 @@ def test_missing_credentials_file_exits_with_actionable_error(monkeypatch, capsy
     assert "Credentials file not found" in captured.err
 
 
-def test_missing_required_credentials_exits(monkeypatch, capsys):
-    module = load_xpost_module()
+def test_missing_required_credentials_exits(monkeypatch, capsys, load_tool_module):
+    module = load_tool_module("xpost")
 
     monkeypatch.setattr(sys, "argv", ["xpost", "whoami"])
     monkeypatch.setattr(
@@ -108,8 +95,10 @@ def test_missing_required_credentials_exits(monkeypatch, capsys):
     assert "Missing X credentials" in captured.err
 
 
-def test_invalid_tweet_id_exits_before_client_call(monkeypatch, capsys):
-    module = load_xpost_module()
+def test_invalid_tweet_id_exits_before_client_call(
+    monkeypatch, capsys, load_tool_module
+):
+    module = load_tool_module("xpost")
     client = types.SimpleNamespace(
         get_tweet=lambda *args, **kwargs: (_ for _ in ()).throw(
             AssertionError("client should not be called")
@@ -128,8 +117,8 @@ def test_invalid_tweet_id_exits_before_client_call(monkeypatch, capsys):
     assert "Invalid tweet ID" in captured.err
 
 
-def test_network_error_is_reported(monkeypatch, capsys):
-    module = load_xpost_module()
+def test_network_error_is_reported(monkeypatch, capsys, load_tool_module):
+    module = load_tool_module("xpost")
     client = types.SimpleNamespace(
         get_me=lambda **kwargs: (_ for _ in ()).throw(OSError("connection reset"))
     )
@@ -146,8 +135,8 @@ def test_network_error_is_reported(monkeypatch, capsys):
     assert "Network error: connection reset" in captured.err
 
 
-def test_bad_request_error_is_reported(monkeypatch, capsys):
-    module = load_xpost_module()
+def test_bad_request_error_is_reported(monkeypatch, capsys, load_tool_module):
+    module = load_tool_module("xpost")
     bad_request = type("BadRequest", (Exception,), {})
     client = types.SimpleNamespace(
         get_tweet=lambda *args, **kwargs: (_ for _ in ()).throw(
