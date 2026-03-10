@@ -7,10 +7,37 @@ Configuration:
   X_ANALYTICS_FILE    Path to analytics data (default: ~/.config/x-api/analytics.json)
   X_USER_HANDLE       Your X handle, used in display output
 """
-import sys, os, json, time, tweepy
+import json
+import os
+import sys
+import time
 
 KEYS_FILE = os.environ.get("X_KEYS_FILE", os.path.expanduser("~/.config/x-api/keys.env"))
 DATA_FILE = os.environ.get("X_ANALYTICS_FILE", os.path.expanduser("~/.config/x-api/analytics.json"))
+
+HELP_TEXT = """xanalytics — Post Performance Tracker
+
+Usage:
+  xanalytics <command> [args]
+  xanalytics --help
+
+Commands:
+  snapshot        Fetch current metrics for recent posts
+  top [n]         Show top-performing posts by engagement
+  report          Show a daily engagement report
+  growth          Show follower growth over time
+  compare         Compare the two latest snapshots
+
+Examples:
+  xanalytics snapshot
+  xanalytics top 10
+  xanalytics report
+  xanalytics compare
+"""
+
+
+def print_help():
+    print(HELP_TEXT)
 
 def load_keys():
     env = {}
@@ -23,6 +50,8 @@ def load_keys():
     return env
 
 def get_client(env):
+    import tweepy
+
     return tweepy.Client(
         consumer_key=env["X_API_KEY"],
         consumer_secret=env["X_API_SECRET"],
@@ -44,15 +73,8 @@ def save_data(data):
 
 def main():
     args = sys.argv[1:]
-    if not args:
-        print("xanalytics — Post Performance Tracker")
-        print()
-        print("Commands:")
-        print("  snapshot        Fetch current metrics for all our posts")
-        print("  top             Show top performing posts")
-        print("  report          Daily engagement report")
-        print("  growth          Follower growth tracking")
-        print("  compare         Compare today vs yesterday")
+    if not args or args[0] in {"-h", "--help"}:
+        print_help()
         return
 
     env = load_keys()
@@ -214,7 +236,8 @@ def main():
             print(f"  {metric.title()}: {p} → {c} ({'+' if d >= 0 else ''}{d})")
 
     else:
-        print(f"Unknown command: {cmd}")
+        print(f"Unknown command: {cmd}", file=sys.stderr)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
