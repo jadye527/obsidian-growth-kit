@@ -1,6 +1,7 @@
 import importlib.util
 import importlib.machinery
 import pathlib
+import types
 import sys
 
 import pytest
@@ -62,3 +63,105 @@ def test_unknown_command_exits_with_error(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert exc_info.value.code == 1
     assert "Unknown command: bogus" in captured.err
+
+
+def test_missing_credentials_file_exits_with_actionable_error(monkeypatch, capsys):
+    module = load_xpost_module()
+
+    monkeypatch.setattr(sys, "argv", ["xpost", "whoami"])
+    monkeypatch.setattr(
+        module,
+        "load_keys",
+        lambda: (_ for _ in ()).throw(
+            module.CredentialsError("Credentials file not found: /tmp/keys.env")
+        ),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert "Credential error:" in captured.err
+    assert "Credentials file not found" in captured.err
+
+
+def test_missing_required_credentials_exits(monkeypatch, capsys):
+    module = load_xpost_module()
+
+    monkeypatch.setattr(sys, "argv", ["xpost", "whoami"])
+    monkeypatch.setattr(
+        module,
+        "load_keys",
+        lambda: (_ for _ in ()).throw(
+            module.CredentialsError(
+                "Missing X credentials in /tmp/keys.env: X_API_KEY"
+            )
+        ),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert "Missing X credentials" in captured.err
+
+
+def test_invalid_tweet_id_exits_before_client_call(monkeypatch, capsys):
+    module = load_xpost_module()
+    client = types.SimpleNamespace(
+        get_tweet=lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("client should not be called")
+        )
+    )
+
+    monkeypatch.setattr(sys, "argv", ["xpost", "read", "abc123"])
+    monkeypatch.setattr(module, "load_keys", lambda: {})
+    monkeypatch.setattr(module, "get_client", lambda env: client)
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert "Invalid tweet ID" in captured.err
+
+
+def test_network_error_is_reported(monkeypatch, capsys):
+    module = load_xpost_module()
+    client = types.SimpleNamespace(
+        get_me=lambda **kwargs: (_ for _ in ()).throw(OSError("connection reset"))
+    )
+
+    monkeypatch.setattr(sys, "argv", ["xpost", "whoami"])
+    monkeypatch.setattr(module, "load_keys", lambda: {})
+    monkeypatch.setattr(module, "get_client", lambda env: client)
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert "Network error: connection reset" in captured.err
+
+
+def test_bad_request_error_is_reported(monkeypatch, capsys):
+    module = load_xpost_module()
+    bad_request = type("BadRequest", (Exception,), {})
+    client = types.SimpleNamespace(
+        get_tweet=lambda *args, **kwargs: (_ for _ in ()).throw(
+            bad_request("tweet not found")
+        )
+    )
+
+    monkeypatch.setattr(sys, "argv", ["xpost", "read", "12345"])
+    monkeypatch.setattr(module, "load_keys", lambda: {})
+    monkeypatch.setattr(module, "get_client", lambda env: client)
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert "Bad tweet ID or request rejected: tweet not found" in captured.err

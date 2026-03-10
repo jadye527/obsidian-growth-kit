@@ -8,6 +8,12 @@ import os
 import sys
 
 KEYS_FILE = os.environ.get("X_KEYS_FILE", os.path.expanduser("~/.config/x-api/keys.env"))
+REQUIRED_KEYS = (
+    "X_API_KEY",
+    "X_API_SECRET",
+    "X_ACCESS_TOKEN",
+    "X_ACCESS_TOKEN_SECRET",
+)
 
 HELP_TEXT = """xpost — X/Twitter CLI
 
@@ -47,15 +53,33 @@ Examples:
 def print_help():
     print(HELP_TEXT)
 
+
+class CredentialsError(Exception):
+    """Raised when required X credentials are missing or invalid."""
+
+
 def load_keys():
     env = {}
-    with open(KEYS_FILE) as f:
-        for line in f:
-            line = line.strip()
-            if "=" in line and not line.startswith("#"):
-                k, v = line.split("=", 1)
-                env[k] = v
+    try:
+        with open(KEYS_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if "=" in line and not line.startswith("#"):
+                    k, v = line.split("=", 1)
+                    env[k] = v
+    except FileNotFoundError as exc:
+        raise CredentialsError(
+            f"Credentials file not found: {KEYS_FILE}. "
+            "Set X_KEYS_FILE or create ~/.config/x-api/keys.env."
+        ) from exc
+
+    missing = [key for key in REQUIRED_KEYS if not env.get(key)]
+    if missing:
+        raise CredentialsError(
+            f"Missing X credentials in {KEYS_FILE}: {', '.join(missing)}"
+        )
     return env
+
 
 def get_client(env):
     import tweepy
@@ -67,6 +91,47 @@ def get_client(env):
         access_token_secret=env["X_ACCESS_TOKEN_SECRET"],
         bearer_token=env.get("TWITTER_BEARER_TOKEN"),
     )
+
+
+def exit_error(message):
+    """Print an actionable error message and exit."""
+    print(message, file=sys.stderr)
+    raise SystemExit(1)
+
+
+def validate_tweet_id(tweet_id):
+    """Require numeric tweet IDs before sending requests."""
+    if not tweet_id or not str(tweet_id).isdigit():
+        exit_error(f"Invalid tweet ID: {tweet_id!r}. Tweet IDs must be numeric.")
+    return tweet_id
+
+
+def handle_runtime_error(exc):
+    """Map API and network failures to stable CLI errors."""
+    exc_name = exc.__class__.__name__
+
+    if isinstance(exc, CredentialsError):
+        exit_error(f"Credential error: {exc}")
+
+    if isinstance(exc, OSError):
+        exit_error(f"Network error: {exc}")
+
+    if exc_name in {"BadRequest", "NotFound"}:
+        exit_error(f"Bad tweet ID or request rejected: {exc}")
+
+    if exc_name in {"Unauthorized", "Forbidden"}:
+        exit_error(f"Authentication error: {exc}")
+
+    if exc_name in {
+        "TweepyException",
+        "TwitterServerError",
+        "TooManyRequests",
+        "HTTPException",
+    }:
+        exit_error(f"X API error: {exc}")
+
+    raise exc
+
 
 def fmt_tweet(t, includes=None):
     author = ""
@@ -90,237 +155,233 @@ def main():
         print_help()
         return
 
-    env = load_keys()
-    client = get_client(env)
-    cmd = args[0]
-    use_json = "--json" in args
+    try:
+        env = load_keys()
+        client = get_client(env)
+        cmd = args[0]
+        use_json = "--json" in args
 
-    if cmd == "whoami":
-        me = client.get_me(user_fields=["description", "public_metrics"])
-        u = me.data
-        if use_json:
-            print(json.dumps({"username": u.username, "name": u.name, "id": str(u.id),
-                              "bio": u.description, "metrics": u.public_metrics}, indent=2))
-        else:
-            print(f"@{u.username} ({u.name})")
-            print(f"Bio: {u.description or '(none)'}")
-            m = u.public_metrics or {}
-            print(f"Followers: {m.get('followers_count', 0)} · Following: {m.get('following_count', 0)} · Tweets: {m.get('tweet_count', 0)}")
-
-    elif cmd == "tweet":
-        text = args[1] if len(args) > 1 else None
-        if not text:
-            print("Usage: xpost tweet \"your message\"", file=sys.stderr)
-            sys.exit(1)
-        resp = client.create_tweet(text=text)
-        tid = resp.data["id"]
-        print(f"Tweet posted: https://x.com/{env.get('X_USER_HANDLE', 'i')}/status/{tid}")
-
-    elif cmd == "reply":
-        tweet_id = args[1] if len(args) > 1 else None
-        text = args[2] if len(args) > 2 else None
-        if not tweet_id or not text:
-            print("Usage: xpost reply <tweet_id> \"your reply\"", file=sys.stderr)
-            sys.exit(1)
-        resp = client.create_tweet(text=text, in_reply_to_tweet_id=tweet_id)
-        tid = resp.data["id"]
-        print(f"Reply posted: https://x.com/{env.get('X_USER_HANDLE', 'i')}/status/{tid}")
-
-    elif cmd == "quote":
-        tweet_id = args[1] if len(args) > 1 else None
-        text = args[2] if len(args) > 2 else None
-        if not tweet_id or not text:
-            print("Usage: xpost quote <tweet_id> \"your text\"", file=sys.stderr)
-            sys.exit(1)
-        resp = client.create_tweet(text=text, quote_tweet_id=tweet_id)
-        tid = resp.data["id"]
-        print(f"Quote tweet posted: https://x.com/{env.get('X_USER_HANDLE', 'i')}/status/{tid}")
-
-    elif cmd == "read":
-        tweet_id = args[1] if len(args) > 1 else None
-        if not tweet_id:
-            print("Usage: xpost read <tweet_id>", file=sys.stderr)
-            sys.exit(1)
-        resp = client.get_tweet(tweet_id, tweet_fields=["created_at", "public_metrics", "author_id"],
-                                expansions=["author_id"])
-        if resp.data:
-            fmt_tweet(resp.data, resp.includes if hasattr(resp, "includes") else None)
-
-    elif cmd == "user":
-        handle = args[1].lstrip("@") if len(args) > 1 else None
-        if not handle:
-            print("Usage: xpost user <@handle>", file=sys.stderr)
-            sys.exit(1)
-        resp = client.get_user(username=handle, user_fields=["description", "public_metrics", "created_at"])
-        u = resp.data
-        if use_json:
-            print(json.dumps({"username": u.username, "name": u.name, "id": str(u.id),
-                              "bio": u.description, "metrics": u.public_metrics}, indent=2))
-        else:
-            print(f"@{u.username} ({u.name})")
-            print(f"Bio: {u.description or '(none)'}")
-            m = u.public_metrics or {}
-            print(f"Followers: {m.get('followers_count', 0)} · Following: {m.get('following_count', 0)} · Tweets: {m.get('tweet_count', 0)}")
-
-    elif cmd == "user-tweets":
-        handle = args[1].lstrip("@") if len(args) > 1 else None
-        if not handle:
-            print("Usage: xpost user-tweets <@handle>", file=sys.stderr)
-            sys.exit(1)
-        user = client.get_user(username=handle)
-        uid = user.data.id
-        resp = client.get_users_tweets(uid, max_results=10,
-                                        tweet_fields=["created_at", "public_metrics", "author_id"],
-                                        expansions=["author_id"])
-        if resp.data:
-            for t in resp.data:
-                fmt_tweet(t, resp.includes if hasattr(resp, "includes") else None)
-        else:
-            print("No tweets found.")
-
-    elif cmd == "search":
-        query = args[1] if len(args) > 1 else None
-        if not query:
-            print("Usage: xpost search \"query\"", file=sys.stderr)
-            sys.exit(1)
-        resp = client.search_recent_tweets(query, max_results=10,
-                                            tweet_fields=["created_at", "public_metrics", "author_id"],
-                                            expansions=["author_id"])
-        if resp.data:
-            for t in resp.data:
-                fmt_tweet(t, resp.includes if hasattr(resp, "includes") else None)
-        else:
-            print("No results.")
-
-    elif cmd == "like":
-        tweet_id = args[1] if len(args) > 1 else None
-        if not tweet_id:
-            print("Usage: xpost like <tweet_id>", file=sys.stderr)
-            sys.exit(1)
-        me = client.get_me()
-        client.like(tweet_id)
-        print(f"Liked tweet {tweet_id}")
-
-    elif cmd == "unlike":
-        tweet_id = args[1] if len(args) > 1 else None
-        if not tweet_id:
-            print("Usage: xpost unlike <tweet_id>", file=sys.stderr)
-            sys.exit(1)
-        me = client.get_me()
-        client.unlike(tweet_id)
-        print(f"Unliked tweet {tweet_id}")
-
-    elif cmd == "retweet":
-        tweet_id = args[1] if len(args) > 1 else None
-        if not tweet_id:
-            print("Usage: xpost retweet <tweet_id>", file=sys.stderr)
-            sys.exit(1)
-        me = client.get_me()
-        client.retweet(tweet_id)
-        print(f"Retweeted {tweet_id}")
-
-    elif cmd == "unretweet":
-        tweet_id = args[1] if len(args) > 1 else None
-        if not tweet_id:
-            print("Usage: xpost unretweet <tweet_id>", file=sys.stderr)
-            sys.exit(1)
-        me = client.get_me()
-        client.unretweet(tweet_id)
-        print(f"Unretweeted {tweet_id}")
-
-    elif cmd == "delete":
-        tweet_id = args[1] if len(args) > 1 else None
-        if not tweet_id:
-            print("Usage: xpost delete <tweet_id>", file=sys.stderr)
-            sys.exit(1)
-        client.delete_tweet(tweet_id)
-        print(f"Deleted tweet {tweet_id}")
-
-    elif cmd == "mentions":
-        me = client.get_me()
-        resp = client.get_users_mentions(me.data.id, max_results=10,
-                                          tweet_fields=["created_at", "public_metrics", "author_id"],
-                                          expansions=["author_id"])
-        if resp.data:
-            for t in resp.data:
-                fmt_tweet(t, resp.includes if hasattr(resp, "includes") else None)
-        else:
-            print("No mentions.")
-
-    elif cmd == "thread":
-        tweet_id = args[1] if len(args) > 1 else None
-        if not tweet_id:
-            print("Usage: xpost thread <tweet_id>", file=sys.stderr)
-            sys.exit(1)
-        resp = client.get_tweet(tweet_id, tweet_fields=["created_at", "public_metrics", "author_id", "conversation_id"],
-                                expansions=["author_id"])
-        if resp.data:
-            conv_id = resp.data.conversation_id or tweet_id
-            fmt_tweet(resp.data, resp.includes if hasattr(resp, "includes") else None)
-            search = client.search_recent_tweets(f"conversation_id:{conv_id}", max_results=20,
-                                                  tweet_fields=["created_at", "public_metrics", "author_id"],
-                                                  expansions=["author_id"])
-            if search.data:
-                for t in search.data:
-                    fmt_tweet(t, search.includes if hasattr(search, "includes") else None)
-
-    elif cmd == "follow":
-        handle = args[1].lstrip("@") if len(args) > 1 else None
-        if not handle:
-            print("Usage: xpost follow <@handle>", file=sys.stderr)
-            sys.exit(1)
-        me = client.get_me()
-        target = client.get_user(username=handle)
-        if not target.data:
-            print(f"User @{handle} not found", file=sys.stderr)
-            sys.exit(1)
-        client.follow_user(target.data.id)
-        print(f"Now following @{handle}")
-
-    elif cmd == "unfollow":
-        handle = args[1].lstrip("@") if len(args) > 1 else None
-        if not handle:
-            print("Usage: xpost unfollow <@handle>", file=sys.stderr)
-            sys.exit(1)
-        me = client.get_me()
-        target = client.get_user(username=handle)
-        if not target.data:
-            print(f"User @{handle} not found", file=sys.stderr)
-            sys.exit(1)
-        client.unfollow_user(target.data.id)
-        print(f"Unfollowed @{handle}")
-
-    elif cmd == "followers":
-        handle = args[1].lstrip("@") if len(args) > 1 else None
-        if not handle:
-            handle = env.get("X_USER_HANDLE", "")
-        user = client.get_user(username=handle)
-        resp = client.get_users_followers(user.data.id, max_results=100,
-                                           user_fields=["public_metrics", "description"])
-        if resp.data:
-            for u in resp.data:
+        if cmd == "whoami":
+            me = client.get_me(user_fields=["description", "public_metrics"])
+            u = me.data
+            if use_json:
+                print(json.dumps({"username": u.username, "name": u.name, "id": str(u.id),
+                                  "bio": u.description, "metrics": u.public_metrics}, indent=2))
+            else:
+                print(f"@{u.username} ({u.name})")
+                print(f"Bio: {u.description or '(none)'}")
                 m = u.public_metrics or {}
-                print(f"@{u.username} ({u.name}) — {m.get('followers_count', 0)} followers")
-        else:
-            print("No followers found.")
+                print(f"Followers: {m.get('followers_count', 0)} · Following: {m.get('following_count', 0)} · Tweets: {m.get('tweet_count', 0)}")
 
-    elif cmd == "following":
-        handle = args[1].lstrip("@") if len(args) > 1 else None
-        if not handle:
-            handle = env.get("X_USER_HANDLE", "")
-        user = client.get_user(username=handle)
-        resp = client.get_users_following(user.data.id, max_results=100,
-                                           user_fields=["public_metrics", "description"])
-        if resp.data:
-            for u in resp.data:
+        elif cmd == "tweet":
+            text = args[1] if len(args) > 1 else None
+            if not text:
+                exit_error("Usage: xpost tweet \"your message\"")
+            resp = client.create_tweet(text=text)
+            tid = resp.data["id"]
+            print(f"Tweet posted: https://x.com/{env.get('X_USER_HANDLE', 'i')}/status/{tid}")
+
+        elif cmd == "reply":
+            tweet_id = args[1] if len(args) > 1 else None
+            text = args[2] if len(args) > 2 else None
+            if not tweet_id or not text:
+                exit_error("Usage: xpost reply <tweet_id> \"your reply\"")
+            tweet_id = validate_tweet_id(tweet_id)
+            resp = client.create_tweet(text=text, in_reply_to_tweet_id=tweet_id)
+            tid = resp.data["id"]
+            print(f"Reply posted: https://x.com/{env.get('X_USER_HANDLE', 'i')}/status/{tid}")
+
+        elif cmd == "quote":
+            tweet_id = args[1] if len(args) > 1 else None
+            text = args[2] if len(args) > 2 else None
+            if not tweet_id or not text:
+                exit_error("Usage: xpost quote <tweet_id> \"your text\"")
+            tweet_id = validate_tweet_id(tweet_id)
+            resp = client.create_tweet(text=text, quote_tweet_id=tweet_id)
+            tid = resp.data["id"]
+            print(f"Quote tweet posted: https://x.com/{env.get('X_USER_HANDLE', 'i')}/status/{tid}")
+
+        elif cmd == "read":
+            tweet_id = args[1] if len(args) > 1 else None
+            if not tweet_id:
+                exit_error("Usage: xpost read <tweet_id>")
+            tweet_id = validate_tweet_id(tweet_id)
+            resp = client.get_tweet(tweet_id, tweet_fields=["created_at", "public_metrics", "author_id"],
+                                    expansions=["author_id"])
+            if resp.data:
+                fmt_tweet(resp.data, resp.includes if hasattr(resp, "includes") else None)
+
+        elif cmd == "user":
+            handle = args[1].lstrip("@") if len(args) > 1 else None
+            if not handle:
+                exit_error("Usage: xpost user <@handle>")
+            resp = client.get_user(username=handle, user_fields=["description", "public_metrics", "created_at"])
+            u = resp.data
+            if use_json:
+                print(json.dumps({"username": u.username, "name": u.name, "id": str(u.id),
+                                  "bio": u.description, "metrics": u.public_metrics}, indent=2))
+            else:
+                print(f"@{u.username} ({u.name})")
+                print(f"Bio: {u.description or '(none)'}")
                 m = u.public_metrics or {}
-                print(f"@{u.username} ({u.name}) — {m.get('followers_count', 0)} followers")
-        else:
-            print("Not following anyone.")
+                print(f"Followers: {m.get('followers_count', 0)} · Following: {m.get('following_count', 0)} · Tweets: {m.get('tweet_count', 0)}")
 
-    else:
-        print(f"Unknown command: {cmd}", file=sys.stderr)
-        sys.exit(1)
+        elif cmd == "user-tweets":
+            handle = args[1].lstrip("@") if len(args) > 1 else None
+            if not handle:
+                exit_error("Usage: xpost user-tweets <@handle>")
+            user = client.get_user(username=handle)
+            uid = user.data.id
+            resp = client.get_users_tweets(uid, max_results=10,
+                                           tweet_fields=["created_at", "public_metrics", "author_id"],
+                                           expansions=["author_id"])
+            if resp.data:
+                for t in resp.data:
+                    fmt_tweet(t, resp.includes if hasattr(resp, "includes") else None)
+            else:
+                print("No tweets found.")
+
+        elif cmd == "search":
+            query = args[1] if len(args) > 1 else None
+            if not query:
+                exit_error("Usage: xpost search \"query\"")
+            resp = client.search_recent_tweets(query, max_results=10,
+                                               tweet_fields=["created_at", "public_metrics", "author_id"],
+                                               expansions=["author_id"])
+            if resp.data:
+                for t in resp.data:
+                    fmt_tweet(t, resp.includes if hasattr(resp, "includes") else None)
+            else:
+                print("No results.")
+
+        elif cmd == "like":
+            tweet_id = args[1] if len(args) > 1 else None
+            if not tweet_id:
+                exit_error("Usage: xpost like <tweet_id>")
+            tweet_id = validate_tweet_id(tweet_id)
+            client.get_me()
+            client.like(tweet_id)
+            print(f"Liked tweet {tweet_id}")
+
+        elif cmd == "unlike":
+            tweet_id = args[1] if len(args) > 1 else None
+            if not tweet_id:
+                exit_error("Usage: xpost unlike <tweet_id>")
+            tweet_id = validate_tweet_id(tweet_id)
+            client.get_me()
+            client.unlike(tweet_id)
+            print(f"Unliked tweet {tweet_id}")
+
+        elif cmd == "retweet":
+            tweet_id = args[1] if len(args) > 1 else None
+            if not tweet_id:
+                exit_error("Usage: xpost retweet <tweet_id>")
+            tweet_id = validate_tweet_id(tweet_id)
+            client.get_me()
+            client.retweet(tweet_id)
+            print(f"Retweeted {tweet_id}")
+
+        elif cmd == "unretweet":
+            tweet_id = args[1] if len(args) > 1 else None
+            if not tweet_id:
+                exit_error("Usage: xpost unretweet <tweet_id>")
+            tweet_id = validate_tweet_id(tweet_id)
+            client.get_me()
+            client.unretweet(tweet_id)
+            print(f"Unretweeted {tweet_id}")
+
+        elif cmd == "delete":
+            tweet_id = args[1] if len(args) > 1 else None
+            if not tweet_id:
+                exit_error("Usage: xpost delete <tweet_id>")
+            tweet_id = validate_tweet_id(tweet_id)
+            client.delete_tweet(tweet_id)
+            print(f"Deleted tweet {tweet_id}")
+
+        elif cmd == "mentions":
+            me = client.get_me()
+            resp = client.get_users_mentions(me.data.id, max_results=10,
+                                             tweet_fields=["created_at", "public_metrics", "author_id"],
+                                             expansions=["author_id"])
+            if resp.data:
+                for t in resp.data:
+                    fmt_tweet(t, resp.includes if hasattr(resp, "includes") else None)
+            else:
+                print("No mentions.")
+
+        elif cmd == "thread":
+            tweet_id = args[1] if len(args) > 1 else None
+            if not tweet_id:
+                exit_error("Usage: xpost thread <tweet_id>")
+            tweet_id = validate_tweet_id(tweet_id)
+            resp = client.get_tweet(tweet_id, tweet_fields=["created_at", "public_metrics", "author_id", "conversation_id"],
+                                    expansions=["author_id"])
+            if resp.data:
+                conv_id = resp.data.conversation_id or tweet_id
+                fmt_tweet(resp.data, resp.includes if hasattr(resp, "includes") else None)
+                search = client.search_recent_tweets(f"conversation_id:{conv_id}", max_results=20,
+                                                     tweet_fields=["created_at", "public_metrics", "author_id"],
+                                                     expansions=["author_id"])
+                if search.data:
+                    for t in search.data:
+                        fmt_tweet(t, search.includes if hasattr(search, "includes") else None)
+
+        elif cmd == "follow":
+            handle = args[1].lstrip("@") if len(args) > 1 else None
+            if not handle:
+                exit_error("Usage: xpost follow <@handle>")
+            client.get_me()
+            target = client.get_user(username=handle)
+            if not target.data:
+                exit_error(f"User @{handle} not found")
+            client.follow_user(target.data.id)
+            print(f"Now following @{handle}")
+
+        elif cmd == "unfollow":
+            handle = args[1].lstrip("@") if len(args) > 1 else None
+            if not handle:
+                exit_error("Usage: xpost unfollow <@handle>")
+            client.get_me()
+            target = client.get_user(username=handle)
+            if not target.data:
+                exit_error(f"User @{handle} not found")
+            client.unfollow_user(target.data.id)
+            print(f"Unfollowed @{handle}")
+
+        elif cmd == "followers":
+            handle = args[1].lstrip("@") if len(args) > 1 else None
+            if not handle:
+                handle = env.get("X_USER_HANDLE", "")
+            user = client.get_user(username=handle)
+            resp = client.get_users_followers(user.data.id, max_results=100,
+                                              user_fields=["public_metrics", "description"])
+            if resp.data:
+                for u in resp.data:
+                    m = u.public_metrics or {}
+                    print(f"@{u.username} ({u.name}) — {m.get('followers_count', 0)} followers")
+            else:
+                print("No followers found.")
+
+        elif cmd == "following":
+            handle = args[1].lstrip("@") if len(args) > 1 else None
+            if not handle:
+                handle = env.get("X_USER_HANDLE", "")
+            user = client.get_user(username=handle)
+            resp = client.get_users_following(user.data.id, max_results=100,
+                                              user_fields=["public_metrics", "description"])
+            if resp.data:
+                for u in resp.data:
+                    m = u.public_metrics or {}
+                    print(f"@{u.username} ({u.name}) — {m.get('followers_count', 0)} followers")
+            else:
+                print("Not following anyone.")
+
+        else:
+            exit_error(f"Unknown command: {cmd}")
+    except SystemExit:
+        raise
+    except Exception as exc:
+        handle_runtime_error(exc)
 
 if __name__ == "__main__":
     main()
