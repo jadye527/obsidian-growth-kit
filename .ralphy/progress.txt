@@ -2,3 +2,18 @@
 
 - [✓] 2026-03-10 21:18 - Add `--help` flag with usage examples to `tools/xpost` (argparse or manual)
 - [✓] 2026-03-10 21:21 - Add `--help` flag with usage examples to `tools/xqueue`
+- [✓] 2026-03-10 21:23 - Add `--help` flag with usage examples to `tools/xanalytics`
+- [✓] 2026-03-10 21:26 - Add `--help` flag with usage examples to `tools/xscout`
+- [✓] 2026-03-10 21:28 - Add `--help` flag with usage examples to `tools/xgrowth`
+- [✓] 2026-03-10 21:33 - Add proper error handling to `tools/xpost` — catch network errors, missing credentials, bad tweet IDs
+- [✓] 2026-03-10 21:36 - Add proper error handling to `tools/xqueue` — catch file read/write errors, empty queue
+- [✓] 2026-03-10 21:40 - Add input validation to all tools — handle missing args gracefully with helpful messages
+- [✓] 2026-03-10 21:43 - Fix any remaining hardcoded paths (replace with `os.path.expanduser("~")` or `$HOME`)
+- [✗] 2026-03-10 21:46 - Create `tests/test_xqueue.py` with pytest tests for add, list, flush, count, cooldown logic
+- [✓] 2026-03-10 21:48 - Create `tests/test_xgrowth.py` with pytest tests for categorization and strategy logging
+- [✓] 2026-03-10 21:50 - Create `tests/test_xscout.py` with pytest tests for tweet parsing, scoring, dedup
+- [✓] 2026-03-10 21:55 - Create `tests/conftest.py` with shared fixtures (temp dirs, mock data)
+- [✓] 2026-03-10 21:57 - Create `.github/workflows/test.yml` — run pytest on every push and PR
+- [✓] 2026-03-10 21:58 - Create `.github/workflows/lint.yml` — run ruff or flake8 on every push and PR
+- [✓] 2026-03-10 22:01 - Create `pyproject.toml` with project metadata and dependencies
+- [✓] 2026-03-10 22:03 - Create `docs/API-REFERENCE.md` documenting all commands for all 6 tools
