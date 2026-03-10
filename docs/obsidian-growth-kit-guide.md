@@ -792,6 +792,121 @@ xrecord upload <name>           Upload to asciinema.org
 
 ---
 
+# Chapter 11: The $220/Month AI Operations Stack
+
+Most people assume running AI agents 24/7 costs thousands per month in API fees. They're wrong.
+
+We run three autonomous AI agents — a CEO (strategy, content, coordination), a trading ops lead (market surveillance, execution), and a dev engine (code improvements, testing, CI) — all for roughly **$220/month**.
+
+Here's the exact stack.
+
+## The Secret: Subscriptions Beat API Credits
+
+The single biggest unlock for affordable AI operations is using **subscription plans** instead of pay-per-token API credits.
+
+| Component | Cost | What It Does |
+|-----------|------|-------------|
+| Claude Max (Anthropic) | ~$200/mo | Unlimited Opus + Sonnet for agent brains via Claude Code CLI |
+| ChatGPT Plus/Pro (OpenAI) | ~$20/mo | Codex for autonomous development work |
+| Haiku API (cron jobs) | ~$2-5/mo | Cheap model for repetitive monitoring tasks |
+| Python background scripts | $0/mo | Continuous data collection, no AI needed |
+| **Total** | **~$220/mo** | |
+
+Compare this to API pricing: a single Opus conversation can cost $0.50-2.00. Run 50 conversations a day across 3 agents and you're at $1,500-3,000/month. The subscription model changes the math completely.
+
+## How Each Piece Works
+
+### Claude Code CLI = The Brain
+
+Claude Code is a command-line interface that connects to your Claude subscription. OpenClaw uses it as the execution engine for agents.
+
+**Why it matters:** Your agents can think with Opus-level intelligence (the most capable model) without per-token charges. This means:
+- Long, complex reasoning chains = free
+- Multi-step tool use (file reads, web searches, code execution) = free
+- Extended conversations with full context = free
+
+Before Claude Code CLI, we were burning $50-100/day on API calls for the same work.
+
+### Codex = The Developer
+
+OpenAI's Codex (accessed via ChatGPT subscription) handles autonomous development:
+- Reads a PRD (Product Requirements Document) with checkbox tasks
+- Works through tasks sequentially in a tmux session
+- Commits code, runs tests, moves to next task
+- A supervisor cron checks every 30 minutes — if Codex finished or stalled, it restarts
+
+**Cost:** ~$20/month for unlimited coding work that would cost $500+/month via API.
+
+### Haiku = The Cheap Worker
+
+For repetitive cron jobs that don't need deep reasoning:
+- Nightly analytics reviews
+- Content scanning
+- Health checks
+
+Haiku costs ~$0.25 per million input tokens. A typical cron job uses 2,000-5,000 tokens. That's $0.001 per run. Even running 100 cron jobs/day = $0.10/day = $3/month.
+
+### Zero-Token Python Scripts = Free Monitoring
+
+Not everything needs AI. Our METAR weather daemon runs pure Python:
+- Polls weather stations every few minutes
+- Detects new data, logs to JSONL
+- Sends Telegram alerts when conditions are met
+- Runs 24/7, costs literally nothing
+
+**Rule of thumb:** If the logic is deterministic (if X then Y), write it in Python. Save AI tokens for decisions that require judgment.
+
+## The Architecture
+
+```
+┌─────────────────────────────────────────┐
+│            OpenClaw Gateway              │
+│  (routes messages to the right agent)    │
+├──────────┬──────────┬───────────────────┤
+│ Obsidian │ Sentinel │      Ralph        │
+│  (CEO)   │ (Trading)│   (Developer)     │
+│          │          │                   │
+│ Claude   │ Claude   │  Codex            │
+│ Code CLI │ Code CLI │  (ChatGPT)        │
+│          │          │                   │
+│ Strategy │ Markets  │  Code, tests,     │
+│ Content  │ METAR    │  CI, features     │
+│ Comms    │ Alerts   │                   │
+└──────────┴──────────┴───────────────────┘
+         │              │
+    ┌────┴────┐    ┌────┴────┐
+    │  Crons  │    │ Scripts │
+    │ (Haiku) │    │ (Python)│
+    │ $3/mo   │    │  $0/mo  │
+    └─────────┘    └─────────┘
+```
+
+## Cost Optimization Tips
+
+1. **Match model to task.** Opus for strategy. Sonnet for conversation. Haiku for crons. Python for monitoring. Most people use Opus for everything — that's like hiring a CEO to answer the phone.
+
+2. **Batch cron jobs.** Instead of running 10 separate cron jobs, combine related checks into one script that runs once.
+
+3. **Cache aggressively.** If you're pulling the same data multiple times per hour, cache it locally. Our weather data gets cached to JSONL — agents read from cache instead of making fresh API calls.
+
+4. **Use background processes for real-time.** Don't use AI crons for continuous monitoring. Write a Python daemon that runs 24/7 and only alerts when something needs attention.
+
+5. **Subscriptions first, API second.** Always check if a subscription plan covers your usage before defaulting to per-token API pricing.
+
+## What This Means for You
+
+If you're running the Growth Kit tools from this guide, your costs look like this:
+
+| Setup | Monthly Cost |
+|-------|-------------|
+| Manual (you run the tools yourself) | $0 (just X API fees) |
+| Semi-automated (crons + scripts) | ~$5/mo (Haiku crons) |
+| Fully autonomous (OpenClaw agents) | ~$200-220/mo |
+
+The fully autonomous setup means your X account posts, engages, analyzes, and improves itself while you sleep. That's the real product here — not the tools, but the **system that runs them without you**.
+
+---
+
 *Built by Obsidian AI | JSJ Consulting*
 *https://jadye527.github.io/obsidian-trading*
 *@ObsidianLabsAI on X*
