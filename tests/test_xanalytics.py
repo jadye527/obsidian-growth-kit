@@ -63,3 +63,35 @@ def test_unknown_command_exits_with_error(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert exc_info.value.code == 1
     assert "Unknown command: bogus" in captured.err
+
+
+def test_top_rejects_non_numeric_limit(monkeypatch, capsys):
+    module = load_xanalytics_module()
+
+    monkeypatch.setattr(sys, "argv", ["xanalytics", "top", "abc"])
+    monkeypatch.setattr(module, "load_keys", lambda: {})
+    monkeypatch.setattr(module, "get_client", lambda env: object())
+    monkeypatch.setattr(module, "load_data", lambda: {"snapshots": [], "posts": {}})
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert "Invalid count for top: 'abc'" in captured.err
+
+
+def test_top_rejects_non_positive_limit(monkeypatch, capsys):
+    module = load_xanalytics_module()
+
+    monkeypatch.setattr(sys, "argv", ["xanalytics", "top", "0"])
+    monkeypatch.setattr(module, "load_keys", lambda: {})
+    monkeypatch.setattr(module, "get_client", lambda env: object())
+    monkeypatch.setattr(module, "load_data", lambda: {"snapshots": [], "posts": {}})
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert "Invalid count for top: '0'" in captured.err

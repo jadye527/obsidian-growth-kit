@@ -60,3 +60,30 @@ def test_unknown_command_exits_with_error(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert exc_info.value.code == 1
     assert "Unknown command: bogus" in captured.err
+
+
+def test_scan_requires_topic_value(monkeypatch, capsys):
+    module = load_xscout_module()
+
+    monkeypatch.setattr(sys, "argv", ["xscout", "scan", "--topic"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert "Usage: xscout scan --topic <topic>" in captured.err
+    assert "Available topics:" in captured.err
+
+
+def test_scan_rejects_unknown_topic(monkeypatch, capsys):
+    module = load_xscout_module()
+
+    monkeypatch.setattr(sys, "argv", ["xscout", "scan", "--topic", "bogus-topic"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert "Unknown topic: bogus-topic." in captured.err

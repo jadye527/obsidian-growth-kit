@@ -36,6 +36,19 @@ Examples:
 def print_help():
     print(HELP_TEXT)
 
+
+def exit_error(message):
+    """Print an actionable error message and exit."""
+    print(message, file=sys.stderr)
+    raise SystemExit(1)
+
+
+def require_args(args, expected_usage, min_args):
+    """Require a minimum number of positional args for a subcommand."""
+    if len(args) < min_args:
+        exit_error(f"Usage: {expected_usage}")
+
+
 def load_json(path, default=None):
     if os.path.exists(path):
         with open(path) as f:
@@ -287,9 +300,7 @@ def main():
     elif cmd == "strategy":
         show_strategy()
     elif cmd == "log-strategy":
-        if len(args) < 3:
-            print("Usage: xgrowth log-strategy \"name\" \"description\"", file=sys.stderr)
-            sys.exit(1)
+        require_args(args, 'xgrowth log-strategy "name" "description" [metrics]', 3)
         log_strategy(args[1], args[2], args[3] if len(args) > 3 else "")
     elif cmd == "leaderboard":
         show_leaderboard()
@@ -310,8 +321,7 @@ def main():
         print("  7. Create a recurring series (Daily Alpha, Weekly P&L)")
         print("  8. Engage in 5+ conversations daily on others' posts")
     else:
-        print(f"Unknown command: {cmd}", file=sys.stderr)
-        sys.exit(1)
+        exit_error(f"Unknown command: {cmd}")
 
 if __name__ == "__main__":
     main()

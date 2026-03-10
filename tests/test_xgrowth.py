@@ -62,3 +62,16 @@ def test_unknown_command_exits_with_error(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert exc_info.value.code == 1
     assert "Unknown command: bogus" in captured.err
+
+
+def test_log_strategy_requires_name_and_description(monkeypatch, capsys):
+    module = load_xgrowth_module()
+
+    monkeypatch.setattr(sys, "argv", ["xgrowth", "log-strategy", "Thread hooks"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert 'Usage: xgrowth log-strategy "name" "description" [metrics]' in captured.err

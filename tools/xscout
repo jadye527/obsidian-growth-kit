@@ -65,6 +65,34 @@ Examples:
 def print_help():
     print(HELP_TEXT)
 
+
+def exit_error(message):
+    """Print an actionable error message and exit."""
+    print(message, file=sys.stderr)
+    raise SystemExit(1)
+
+
+def parse_scan_topic(args):
+    """Validate the optional --topic flag for scan."""
+    if "--topic" not in args:
+        return None
+
+    idx = args.index("--topic")
+    if idx + 1 >= len(args) or args[idx + 1].startswith("--"):
+        exit_error(
+            "Usage: xscout scan --topic <topic>\n"
+            f"Available topics: {', '.join(sorted(TOPICS))}"
+        )
+
+    topic = args[idx + 1]
+    if topic not in TOPICS:
+        exit_error(
+            f"Unknown topic: {topic}. Available topics: {', '.join(sorted(TOPICS))}"
+        )
+
+    return topic
+
+
 def xpost_search(query):
     """Run xpost search and parse results."""
     try:
@@ -226,10 +254,7 @@ def main():
     cmd = args[0]
 
     if cmd == "scan":
-        topic = None
-        if "--topic" in args:
-            idx = args.index("--topic")
-            topic = args[idx + 1] if idx + 1 < len(args) else None
+        topic = parse_scan_topic(args)
 
         print(f"🔍 Scanning {'all topics' if not topic else topic}...")
         print()
@@ -306,9 +331,7 @@ def main():
                 print()
 
     else:
-        print(f"Unknown command: {cmd}", file=sys.stderr)
-        print(__doc__)
-        sys.exit(1)
+        exit_error(f"Unknown command: {cmd}")
 
 if __name__ == "__main__":
     main()

@@ -15,7 +15,30 @@ set -euo pipefail
 RECORD_DIR="$HOME/.config/x-api/recordings"
 mkdir -p "$RECORD_DIR"
 
+print_help() {
+  echo "xrecord — Agent activity recorder"
+  echo ""
+  echo "Usage:"
+  echo "  xrecord demo [name]           Scripted demo of agent tools"
+  echo "  xrecord snapshot              Quick 30s status recording"
+  echo "  xrecord session [name] [sec]  Record live session"
+  echo "  xrecord list                  List recordings"
+  echo "  xrecord upload <name>         Upload to asciinema.org"
+  echo "  xrecord svg <name>            Convert to SVG animation"
+  echo "  xrecord --help"
+}
+
+exit_error() {
+  echo "$1" >&2
+  exit 1
+}
+
 cmd="${1:-help}"
+
+if [ "$cmd" = "--help" ] || [ "$cmd" = "-h" ]; then
+  print_help
+  exit 0
+fi
 
 case "$cmd" in
   demo)
@@ -124,6 +147,10 @@ SNAP
     SECS="${3:-60}"
     CAST="$RECORD_DIR/$NAME.cast"
 
+    if ! [[ "$SECS" =~ ^[0-9]+$ ]]; then
+      exit_error "Usage: xrecord session [name] [sec]. Seconds must be a positive integer."
+    fi
+
     echo "🎬 Recording live session: $NAME ($SECS seconds)"
     asciinema rec --idle-time-limit 2 --title "Obsidian AI — $NAME" "$CAST"
     echo "✅ Session saved: $CAST"
@@ -139,13 +166,11 @@ SNAP
   upload)
     NAME="${2:-}"
     if [ -z "$NAME" ]; then
-      echo "Usage: xrecord upload <name>"
-      exit 1
+      exit_error "Usage: xrecord upload <name>"
     fi
     CAST="$RECORD_DIR/$NAME.cast"
     if [ ! -f "$CAST" ]; then
-      echo "Recording not found: $CAST"
-      exit 1
+      exit_error "Recording not found: $CAST"
     fi
     echo "📤 Uploading $NAME to asciinema.org..."
     asciinema upload "$CAST"
@@ -155,11 +180,13 @@ SNAP
     # Convert to SVG animation using svg-term if available
     NAME="${2:-}"
     if [ -z "$NAME" ]; then
-      echo "Usage: xrecord svg <name>"
-      exit 1
+      exit_error "Usage: xrecord svg <name>"
     fi
     CAST="$RECORD_DIR/$NAME.cast"
     SVG="$RECORD_DIR/$NAME.svg"
+    if [ ! -f "$CAST" ]; then
+      exit_error "Recording not found: $CAST"
+    fi
     if command -v svg-term &>/dev/null; then
       svg-term --in "$CAST" --out "$SVG" --window --no-cursor
       echo "✅ SVG saved: $SVG"
@@ -169,14 +196,6 @@ SNAP
     ;;
 
   help|*)
-    echo "xrecord — Agent activity recorder"
-    echo ""
-    echo "Usage:"
-    echo "  xrecord demo [name]           Scripted demo of agent tools"
-    echo "  xrecord snapshot              Quick 30s status recording"
-    echo "  xrecord session [name] [sec]  Record live session"
-    echo "  xrecord list                  List recordings"
-    echo "  xrecord upload <name>         Upload to asciinema.org"
-    echo "  xrecord svg <name>            Convert to SVG animation"
+    print_help
     ;;
 esac
