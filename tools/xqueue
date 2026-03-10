@@ -38,16 +38,38 @@ def print_help():
     print(HELP_TEXT)
 
 
+class QueueError(Exception):
+    """Raised when queue data cannot be loaded or saved."""
+
+
+def exit_error(message):
+    """Print an actionable error message and exit."""
+    print(message, file=sys.stderr)
+    raise SystemExit(1)
+
+
 def load_queue():
     if os.path.exists(QUEUE_FILE):
-        with open(QUEUE_FILE) as f:
-            return json.load(f)
+        try:
+            with open(QUEUE_FILE) as f:
+                return json.load(f)
+        except OSError as exc:
+            raise QueueError(f"Unable to read queue file {QUEUE_FILE}: {exc}") from exc
+        except json.JSONDecodeError as exc:
+            raise QueueError(
+                f"Queue file is not valid JSON: {QUEUE_FILE}: {exc}"
+            ) from exc
     return {"tweets": [], "last_posted": 0}
 
+
 def save_queue(q):
-    os.makedirs(os.path.dirname(QUEUE_FILE), exist_ok=True)
-    with open(QUEUE_FILE, "w") as f:
-        json.dump(q, f, indent=2)
+    try:
+        os.makedirs(os.path.dirname(QUEUE_FILE), exist_ok=True)
+        with open(QUEUE_FILE, "w") as f:
+            json.dump(q, f, indent=2)
+    except OSError as exc:
+        raise QueueError(f"Unable to write queue file {QUEUE_FILE}: {exc}") from exc
+
 
 def main():
     args = sys.argv[1:]
@@ -56,15 +78,20 @@ def main():
         return
 
     cmd = args[0]
-    q = load_queue()
+    try:
+        q = load_queue()
+    except QueueError as exc:
+        exit_error(f"Queue error: {exc}")
 
     if cmd == "add":
         text = args[1] if len(args) > 1 else None
         if not text:
-            print("Usage: xqueue add \"tweet text\"", file=sys.stderr)
-            sys.exit(1)
+            exit_error("Usage: xqueue add \"tweet text\"")
         q["tweets"].append({"text": text, "added": int(time.time())})
-        save_queue(q)
+        try:
+            save_queue(q)
+        except QueueError as exc:
+            exit_error(f"Queue error: {exc}")
         print(f"Queued. ({len(q['tweets'])} in queue)")
 
     elif cmd == "list":
@@ -80,7 +107,10 @@ def main():
 
     elif cmd == "clear":
         q["tweets"] = []
-        save_queue(q)
+        try:
+            save_queue(q)
+        except QueueError as exc:
+            exit_error(f"Queue error: {exc}")
         print("Queue cleared.")
 
     elif cmd == "next":
@@ -100,19 +130,27 @@ def main():
             )
             if result.returncode == 0:
                 q["last_posted"] = int(time.time())
-                save_queue(q)
+                try:
+                    save_queue(q)
+                except QueueError as exc:
+                    q["tweets"].insert(0, tweet)
+                    exit_error(f"Queue error: {exc}")
                 print(result.stdout.strip())
             else:
                 # Put it back if it failed
                 q["tweets"].insert(0, tweet)
-                save_queue(q)
-                print(f"Failed: {result.stderr.strip()}", file=sys.stderr)
-                sys.exit(1)
+                try:
+                    save_queue(q)
+                except QueueError as exc:
+                    exit_error(f"Queue error: {exc}")
+                exit_error(f"Failed: {result.stderr.strip()}")
         except Exception as e:
             q["tweets"].insert(0, tweet)
-            save_queue(q)
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
+            try:
+                save_queue(q)
+            except QueueError as exc:
+                exit_error(f"Queue error: {exc}")
+            exit_error(f"Error: {e}")
 
     elif cmd == "flush":
         if not q["tweets"]:
@@ -135,24 +173,33 @@ def main():
                 )
                 if result.returncode == 0:
                     q["last_posted"] = int(time.time())
-                    save_queue(q)
+                    try:
+                        save_queue(q)
+                    except QueueError as exc:
+                        q["tweets"].insert(0, tweet)
+                        exit_error(f"Queue error: {exc}")
                     posted += 1
                     print(f"  [{posted}/{count}] {result.stdout.strip()}")
                 else:
                     q["tweets"].insert(0, tweet)
-                    save_queue(q)
+                    try:
+                        save_queue(q)
+                    except QueueError as exc:
+                        exit_error(f"Queue error: {exc}")
                     print(f"  Failed — retrying after longer cooldown")
                     time.sleep(MIN_INTERVAL)
             except Exception as e:
                 q["tweets"].insert(0, tweet)
-                save_queue(q)
+                try:
+                    save_queue(q)
+                except QueueError as exc:
+                    exit_error(f"Queue error: {exc}")
                 print(f"  Error: {e}")
                 break
         print(f"Done. Posted {posted}/{count}.")
 
     else:
-        print(f"Unknown command: {cmd}", file=sys.stderr)
-        sys.exit(1)
+        exit_error(f"Unknown command: {cmd}")
 
 if __name__ == "__main__":
     main()
