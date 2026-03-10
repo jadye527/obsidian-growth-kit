@@ -1,21 +1,40 @@
 #!/usr/bin/env python3
-"""xgrowth — X Growth Engine for @YourHandle.
-Tracks what's working, what's not, and manages daily strategy improvements.
-
-Usage:
-  xgrowth track              Analyze all posts, categorize performance
-  xgrowth report             Full growth report with recommendations
-  xgrowth strategy           Show current strategy + history of changes
-  xgrowth new-strategy       Research and propose today's new tactic
-  xgrowth leaderboard        Show accounts we should study/emulate
-  xgrowth ab-test            Show active A/B tests and results
-"""
-import sys, os, json, subprocess
+"""xgrowth — X Growth Engine for @YourHandle."""
+import json
+import os
+import subprocess
+import sys
 from datetime import datetime, timezone
 
 DATA_DIR = os.path.expanduser("~/.config/x-api")
 GROWTH_FILE = os.path.join(DATA_DIR, "growth-tracker.json")
 STRATEGY_FILE = os.path.join(DATA_DIR, "strategy-log.json")
+
+HELP_TEXT = """xgrowth — X Growth Engine
+
+Usage:
+  xgrowth <command> [args]
+  xgrowth --help
+
+Commands:
+  track                            Analyze all posts and categorize performance
+  report                           Full growth report with recommendations
+  strategy                         Show current strategy and change history
+  log-strategy <name> <desc> [m]   Log a new strategy with optional metrics
+  new-strategy                     Show today's suggested tactic ideas
+  leaderboard                      Show accounts we should study/emulate
+
+Examples:
+  xgrowth track
+  xgrowth report
+  xgrowth strategy
+  xgrowth log-strategy "Thread hooks" "Lead with stronger opening claims"
+  xgrowth leaderboard
+"""
+
+
+def print_help():
+    print(HELP_TEXT)
 
 def load_json(path, default=None):
     if os.path.exists(path):
@@ -255,8 +274,8 @@ def show_leaderboard():
 
 def main():
     args = sys.argv[1:]
-    if not args:
-        print(__doc__)
+    if not args or args[0] in {"-h", "--help"}:
+        print_help()
         return
 
     cmd = args[0]
