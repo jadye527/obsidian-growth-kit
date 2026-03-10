@@ -2,6 +2,7 @@ import importlib.machinery
 import importlib.util
 import pathlib
 import sys
+import types
 
 import pytest
 
@@ -130,3 +131,145 @@ def test_flush_on_empty_queue_prints_message(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert captured.out.strip() == "Queue empty."
     assert captured.err == ""
+
+
+def test_add_appends_tweet_and_saves_queue(monkeypatch, capsys):
+    module = load_xqueue_module()
+    saved_queue = {}
+
+    monkeypatch.setattr(sys, "argv", ["xqueue", "add", "ship it"])
+    monkeypatch.setattr(module, "load_queue", lambda: {"tweets": [], "last_posted": 0})
+    monkeypatch.setattr(module.time, "time", lambda: 1234)
+
+    def fake_save_queue(queue):
+        saved_queue["value"] = queue
+
+    monkeypatch.setattr(module, "save_queue", fake_save_queue)
+
+    module.main()
+
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "Queued. (1 in queue)"
+    assert captured.err == ""
+    assert saved_queue["value"] == {
+        "tweets": [{"text": "ship it", "added": 1234}],
+        "last_posted": 0,
+    }
+
+
+def test_list_prints_numbered_queue_entries(monkeypatch, capsys):
+    module = load_xqueue_module()
+
+    monkeypatch.setattr(sys, "argv", ["xqueue", "list"])
+    monkeypatch.setattr(
+        module,
+        "load_queue",
+        lambda: {
+            "tweets": [
+                {"text": "first queued tweet", "added": 1},
+                {"text": "second line\nwith newline", "added": 2},
+            ],
+            "last_posted": 0,
+        },
+    )
+
+    module.main()
+
+    captured = capsys.readouterr()
+    assert "1. first queued tweet..." in captured.out
+    assert "2. second line with newline..." in captured.out
+    assert captured.err == ""
+
+
+def test_count_prints_queue_size(monkeypatch, capsys):
+    module = load_xqueue_module()
+
+    monkeypatch.setattr(sys, "argv", ["xqueue", "count"])
+    monkeypatch.setattr(
+        module,
+        "load_queue",
+        lambda: {"tweets": [{"text": "a"}, {"text": "b"}], "last_posted": 0},
+    )
+
+    module.main()
+
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "2"
+    assert captured.err == ""
+
+
+def test_next_respects_cooldown(monkeypatch, capsys):
+    module = load_xqueue_module()
+
+    monkeypatch.setattr(sys, "argv", ["xqueue", "next"])
+    monkeypatch.setattr(module.time, "time", lambda: 1000)
+    monkeypatch.setattr(
+        module,
+        "load_queue",
+        lambda: {
+            "tweets": [{"text": "queued tweet", "added": 10}],
+            "last_posted": 100,
+        },
+    )
+
+    def fail_run(*args, **kwargs):
+        raise AssertionError("subprocess.run should not be called during cooldown")
+
+    monkeypatch.setattr(module.subprocess, "run", fail_run)
+
+    module.main()
+
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "Cooldown: 800s remaining"
+    assert captured.err == ""
+
+
+def test_flush_posts_all_tweets_and_sleeps_for_cooldown(monkeypatch, capsys):
+    module = load_xqueue_module()
+    queue = {
+        "tweets": [
+            {"text": "first tweet", "added": 1},
+            {"text": "second tweet", "added": 2},
+        ],
+        "last_posted": 0,
+    }
+    saved_states = []
+    posted_texts = []
+    sleep_calls = []
+    time_values = iter([1000, 1000, 1100, 2000, 2000])
+
+    monkeypatch.setattr(sys, "argv", ["xqueue", "flush"])
+    monkeypatch.setattr(module, "load_queue", lambda: queue)
+    monkeypatch.setattr(module.time, "time", lambda: next(time_values))
+    monkeypatch.setattr(module.time, "sleep", lambda seconds: sleep_calls.append(seconds))
+
+    def fake_save_queue(current_queue):
+        saved_states.append(
+            {
+                "tweets": [tweet.copy() for tweet in current_queue["tweets"]],
+                "last_posted": current_queue["last_posted"],
+            }
+        )
+
+    def fake_run(args, capture_output, text, timeout):
+        posted_texts.append(args[2])
+        return types.SimpleNamespace(returncode=0, stdout=f"posted {args[2]}", stderr="")
+
+    monkeypatch.setattr(module, "save_queue", fake_save_queue)
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    module.main()
+
+    captured = capsys.readouterr()
+    assert "Flushing 2 tweets (15-min intervals)..." in captured.out
+    assert "[1/2] posted first tweet" in captured.out
+    assert "Waiting 800s..." in captured.out
+    assert "[2/2] posted second tweet" in captured.out
+    assert "Done. Posted 2/2." in captured.out
+    assert captured.err == ""
+    assert posted_texts == ["first tweet", "second tweet"]
+    assert sleep_calls == [800]
+    assert saved_states == [
+        {"tweets": [{"text": "second tweet", "added": 2}], "last_posted": 1000},
+        {"tweets": [], "last_posted": 2000},
+    ]
