@@ -15,6 +15,9 @@ echo -e "${PURPLE}⚫ Obsidian Growth Kit${RESET} — Installer"
 echo -e "${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 echo ""
 
+CONFIG_DIR="${HOME:?}/.config/x-api"
+BIN_DIR="${HOME}/.local/bin"
+
 # Check dependencies
 echo -e "${CYAN}Checking dependencies...${RESET}"
 missing=()
@@ -38,8 +41,8 @@ echo -e "${GREEN}  Python packages installed.${RESET}"
 # Create config directories
 echo ""
 echo -e "${CYAN}Setting up config directories...${RESET}"
-mkdir -p ~/.config/x-api
-mkdir -p ~/.local/bin
+mkdir -p "$CONFIG_DIR"
+mkdir -p "$BIN_DIR"
 echo -e "${GREEN}  Config directories created.${RESET}"
 
 # Install tools
@@ -49,25 +52,25 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 for tool in xpost xqueue xanalytics xscout xgrowth xrecord; do
   if [ -f "$SCRIPT_DIR/tools/$tool" ]; then
-    cp "$SCRIPT_DIR/tools/$tool" ~/.local/bin/$tool
-    chmod +x ~/.local/bin/$tool
+    cp "$SCRIPT_DIR/tools/$tool" "$BIN_DIR/$tool"
+    chmod +x "$BIN_DIR/$tool"
     echo -e "  ${GREEN}✓${RESET} $tool installed"
   else
     echo -e "  ${DIM}⊘ $tool not found in tools/${RESET}"
   fi
 done
 
-# Check if ~/.local/bin is in PATH
+# Check if the local bin directory is in PATH
 if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
   echo ""
-  echo -e "${BOLD}Add this to your shell profile (~/.bashrc or ~/.zshrc):${RESET}"
+  echo -e "${BOLD}Add this to your shell profile (\$HOME/.bashrc or \$HOME/.zshrc):${RESET}"
   echo '  export PATH="$HOME/.local/bin:$PATH"'
 fi
 
 # API key setup
 echo ""
 echo -e "${CYAN}Setting up X API credentials...${RESET}"
-KEYS_FILE="$HOME/.config/x-api/keys.env"
+KEYS_FILE="$CONFIG_DIR/keys.env"
 if [ -f "$KEYS_FILE" ]; then
   echo -e "  ${DIM}Keys file already exists at $KEYS_FILE${RESET}"
 else
@@ -92,7 +95,7 @@ if [ -d "$SCRIPT_DIR/templates" ]; then
   for tmpl in "$SCRIPT_DIR/templates"/*; do
     if [ -f "$tmpl" ]; then
       basename=$(basename "$tmpl")
-      cp "$tmpl" ~/.config/x-api/$basename
+      cp "$tmpl" "$CONFIG_DIR/$basename"
       echo -e "  ${GREEN}✓${RESET} $basename"
     fi
   done
@@ -103,7 +106,7 @@ echo -e "${DIM}━━━━━━━━━━━━━━━━━━━━━�
 echo -e "${GREEN}${BOLD}Installation complete!${RESET}"
 echo ""
 echo -e "Next steps:"
-echo -e "  1. Edit ${BOLD}~/.config/x-api/keys.env${RESET} with your X API credentials"
+echo -e "  1. Edit ${BOLD}$KEYS_FILE${RESET} with your X API credentials"
 echo -e "  2. Run ${BOLD}xpost whoami${RESET} to verify connection"
 echo -e "  3. Read ${BOLD}docs/QUICKSTART.md${RESET} to get started"
 echo -e "  4. Run ${BOLD}xqueue add \"your first tweet\"${RESET} to queue a post"
