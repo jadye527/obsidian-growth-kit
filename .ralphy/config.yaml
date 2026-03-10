@@ -1,0 +1,17 @@
+project:
+  name: obsidian-growth-kit
+  language: Unknown
+  framework: ""
+  description: ""
+commands:
+  test: ""
+  lint: ""
+  build: ""
+rules:
+  - Use Python 3.10+ syntax
+  - All tools should have --help flag
+  - Use pytest for testing
+  - No hardcoded paths - use os.path.expanduser or env vars
+  - PEP 8 compliant
+boundaries:
+  never_touch: null
