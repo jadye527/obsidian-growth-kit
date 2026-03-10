@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
-"""xscout — Content scout for @YourHandle.
-Finds high-engagement tweets, threads, and content aligned with our topics.
-Outputs opportunities for quoting, replying, and reposting.
-
-Usage:
-  xscout scan              Full scan across all topics
-  xscout scan --topic X    Scan specific topic
-  xscout viral             Find viral content (>50 likes) in our space
-  xscout opportunities     Find reply opportunities on active threads
-  xscout report            Generate formatted report of best finds
-"""
-import sys, os, json, subprocess
+"""xscout — Content scout for @YourHandle."""
+import json
+import os
+import subprocess
+import sys
 from datetime import datetime, timezone
 
 TOPICS = {
@@ -46,6 +39,31 @@ TOPICS = {
 MIN_LIKES_VIRAL = 50
 MIN_LIKES_OPPORTUNITY = 10
 RESULTS_FILE = os.path.expanduser("~/.config/x-api/scout-results.json")
+
+HELP_TEXT = """xscout — Content Scout
+
+Usage:
+  xscout <command> [args]
+  xscout --help
+
+Commands:
+  scan                    Full scan across all topics
+  scan --topic <topic>    Scan a specific topic
+  viral                   Find viral content in our space
+  opportunities           Find reply opportunities on active threads
+  report                  Generate a formatted report of best finds
+
+Examples:
+  xscout scan
+  xscout scan --topic ai-agents
+  xscout viral
+  xscout opportunities
+  xscout report
+"""
+
+
+def print_help():
+    print(HELP_TEXT)
 
 def xpost_search(query):
     """Run xpost search and parse results."""
@@ -201,8 +219,8 @@ def suggest_actions(results):
 
 def main():
     args = sys.argv[1:]
-    if not args:
-        print(__doc__)
+    if not args or args[0] in {"-h", "--help"}:
+        print_help()
         return
 
     cmd = args[0]
