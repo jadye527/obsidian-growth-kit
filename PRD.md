@@ -1,44 +1,40 @@
-# Obsidian Growth Kit — Code Improvements
+# Obsidian Command Center — Dashboard Improvements
 
 ## Overview
-Improve code quality, add tests, and set up CI for the Obsidian Growth Kit — a set of CLI tools for autonomous X/Twitter growth.
+Enhance the agent orchestration dashboard. The v1 HTML is at `/home/jasondye/openclaw-workspace/agent-dashboard/index.html`. Make it pull live data instead of hardcoded JSON.
 
 ## Requirements
 
-### Code Quality
-- [x] Add `--help` flag with usage examples to `tools/xpost` (argparse or manual)
-- [x] Add `--help` flag with usage examples to `tools/xqueue`
-- [x] Add `--help` flag with usage examples to `tools/xanalytics`
-- [x] Add `--help` flag with usage examples to `tools/xscout`
-- [x] Add `--help` flag with usage examples to `tools/xgrowth`
-- [x] Add proper error handling to `tools/xpost` — catch network errors, missing credentials, bad tweet IDs
-- [x] Add proper error handling to `tools/xqueue` — catch file read/write errors, empty queue
-- [x] Add input validation to all tools — handle missing args gracefully with helpful messages
-- [x] Fix any remaining hardcoded paths (replace with `os.path.expanduser("~")` or `$HOME`)
+### Data Collection Layer
+- [ ] Create `collect.py` in agent-dashboard/ — scans agent state, writes `dashboard-state.json`
+- [ ] Scan tmux sessions for agent health (`tmux -S ~/.tmux/sock list-sessions`)
+- [ ] Read PRD.md files from agent dirs for task progress (checked vs unchecked)
+- [ ] Parse `/tmp/metar_daemon.log` tail for daemon status
+- [ ] Check process health: `pgrep -f` for metar_daemon, five_min_monitor, xqueue
+- [ ] Read paper_trades.db for trading stats (win rate, P&L, last trade date)
 
-### Testing
-- [x] Create `tests/test_xqueue.py` with pytest tests for add, list, flush, count, cooldown logic
-- [x] Create `tests/test_xgrowth.py` with pytest tests for categorization and strategy logging
-- [x] Create `tests/test_xscout.py` with pytest tests for tweet parsing, scoring, dedup
-- [x] Create `tests/conftest.py` with shared fixtures (temp dirs, mock data)
+### Dashboard Enhancements
+- [ ] Make `index.html` fetch `dashboard-state.json` instead of hardcoded DATA
+- [ ] Add auto-refresh (poll every 60 seconds)
+- [ ] Add "last refreshed" live timestamp
+- [ ] Add responsive mobile layout
+- [ ] Add expandable task details on click
 
-### CI/CD
-- [x] Create `.github/workflows/test.yml` — run pytest on every push and PR
-- [x] Create `.github/workflows/lint.yml` — run ruff or flake8 on every push and PR
-- [x] Create `pyproject.toml` with project metadata and dependencies
+### Cost Tracking
+- [ ] Create `cost-tracker.json` format for monthly cost entries
+- [ ] Render cost history chart (month-over-month)
 
-### Documentation
-- [x] Create `docs/API-REFERENCE.md` documenting all commands for all 6 tools
-- [x] Add docstrings to all public functions in the Python tools
+### Agent Communication Log
+- [ ] Create `activity-log.jsonl` that agents append events to
+- [ ] Display in timeline with filtering by agent
 
 ## Tech Stack
-- Python 3.10+
-- pytest for testing
-- GitHub Actions for CI
-- ruff for linting
+- Pure HTML/CSS/JS (no build tools, no npm)
+- Tailwind CSS via CDN
+- Python for data collection
+- JSON/JSONL for data
 
 ## Constraints
-- Do not add any API keys or credentials to the repo
-- All paths must use `~` or env vars, never hardcoded
-- Tools must work standalone (no server needed)
-- Keep dependencies minimal (tweepy, asciinema only)
+- No build step — must work as static files on GitHub Pages
+- Data collection runs via cron, dashboard is read-only
+- Do not expose credentials
