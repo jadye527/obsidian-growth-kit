@@ -50,7 +50,7 @@ echo ""
 echo -e "${CYAN}Installing CLI tools...${RESET}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-for tool in xpost xqueue xanalytics xscout xgrowth xrecord; do
+for tool in xpost xqueue xanalytics xscout xgrowth xrecord xmiddleware; do
   if [ -f "$SCRIPT_DIR/tools/$tool" ]; then
     cp "$SCRIPT_DIR/tools/$tool" "$BIN_DIR/$tool"
     chmod +x "$BIN_DIR/$tool"

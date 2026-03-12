@@ -8,6 +8,7 @@ def test_api_reference_lists_all_tool_sections(repo_root):
         "## `xscout`",
         "## `xgrowth`",
         "## `xrecord`",
+        "## `xmiddleware`",
     ):
         assert heading in doc
 

@@ -1,6 +1,6 @@
 # API Reference
 
-This document lists every CLI command exposed by the six tools in `obsidian-growth-kit`.
+This document lists every CLI command exposed by the tools in `obsidian-growth-kit`.
 
 ## Common Pattern
 
@@ -191,3 +191,28 @@ Options and behavior:
 - Recordings are stored in `~/.config/x-api/recordings`.
 - `session` requires `sec` to be a positive integer when provided.
 - `svg` requires `svg-term` to be installed.
+
+## `xmiddleware`
+
+Next.js middleware probe for tunnel host and auth cookie behavior.
+
+Usage:
+
+```bash
+xmiddleware probe --url <url> [--host <host>] [--cookie <cookie>] [--timeout <sec>]
+xmiddleware --help
+```
+
+Commands:
+
+| Command | Description |
+| --- | --- |
+| `xmiddleware probe --url <url>` | Probe a URL and report whether the response suggests host blocking or cookie rejection. |
+| `xmiddleware probe --url <url> --host <host>` | Override the `Host` header to simulate a tunneled hostname against a local server. |
+| `xmiddleware probe --url <url> --cookie <cookie>` | Send a raw `Cookie` header to check whether auth survives middleware. |
+
+Options and behavior:
+
+- Redirects are not followed so middleware redirects stay visible.
+- The report includes `Location`, `Set-Cookie`, and any `x-middleware-*` headers returned by Next.js.
+- Host blocking is inferred from 4xx responses plus host-related error markers in the body.

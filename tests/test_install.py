@@ -45,5 +45,6 @@ def test_install_uses_home_for_config_and_bin_dirs(repo_root, install_env):
     assert (fake_home / ".config" / "x-api" / "keys.env").is_file()
     assert (fake_home / ".local" / "bin" / "xpost").is_file()
     assert (fake_home / ".local" / "bin" / "xqueue").is_file()
+    assert (fake_home / ".local" / "bin" / "xmiddleware").is_file()
     assert not (repo_root / "~").exists()
     assert str(fake_home / ".config" / "x-api" / "keys.env") in result.stdout
