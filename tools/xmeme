@@ -19,6 +19,18 @@ DEFAULT_TEMPLATE_COUNT = 8
 DEFAULT_TEMPLATE_OUTPUT_DIR = "out/templates"
 IMGFLIP_API_URL = "https://api.imgflip.com/get_memes?type=image"
 HTTP_HEADERS = {"User-Agent": "obsidian-growth-kit/xmeme"}
+PREFERRED_TEMPLATE_NAMES = (
+    "Drake Hotline Bling",
+    "Two Buttons",
+    "Distracted Boyfriend",
+    "Change My Mind",
+    "Expanding Brain",
+    "One Does Not Simply",
+    "Gru's Plan",
+    "Left Exit 12 Off Ramp",
+    "Running Away Balloon",
+    "Batman Slapping Robin",
+)
 
 HELP_TEXT = """xmeme — Fresh meme generator
 
@@ -172,6 +184,35 @@ def template_filename(template: dict[str, str]) -> str:
     return f"{slugify_template_name(template['name'])}{suffix}"
 
 
+def select_templates(
+    templates: list[dict[str, str]], count: int
+) -> list[dict[str, str]]:
+    """Prefer a varied set of well-known templates before filling with remaining items."""
+    selected: list[dict[str, str]] = []
+    seen_names: set[str] = set()
+    templates_by_name = {template["name"]: template for template in templates}
+
+    for name in PREFERRED_TEMPLATE_NAMES:
+        template = templates_by_name.get(name)
+        if template is None:
+            continue
+        selected.append(template)
+        seen_names.add(name)
+        if len(selected) == count:
+            return selected
+
+    for template in templates:
+        name = template["name"]
+        if name in seen_names:
+            continue
+        selected.append(template)
+        seen_names.add(name)
+        if len(selected) == count:
+            break
+
+    return selected
+
+
 def fetch_popular_templates(count: int) -> list[dict[str, str]]:
     """Fetch a list of popular meme templates from Imgflip."""
     request = Request(IMGFLIP_API_URL, headers=HTTP_HEADERS)
@@ -182,11 +223,12 @@ def fetch_popular_templates(count: int) -> list[dict[str, str]]:
     if not payload.get("success") or not memes:
         exit_error("template download failed: Imgflip did not return templates")
 
-    return [
+    templates = [
         {"name": meme["name"], "url": meme["url"]}
-        for meme in memes[:count]
+        for meme in memes
         if meme.get("name") and meme.get("url")
     ]
+    return select_templates(templates, count)
 
 
 def download_template(template: dict[str, str], output_dir: str) -> str:

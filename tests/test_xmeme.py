@@ -142,6 +142,45 @@ def test_parse_download_args_defaults(load_tool_module):
     assert options == {"count": 8, "output_dir": "out/templates"}
 
 
+def test_select_templates_prefers_curated_variety(load_tool_module):
+    module = load_tool_module("xmeme")
+
+    templates = [
+        {"name": "Ancient Aliens", "url": "https://example.com/aliens.jpg"},
+        {"name": "Distracted Boyfriend", "url": "https://example.com/distracted.jpg"},
+        {"name": "Change My Mind", "url": "https://example.com/change.jpg"},
+        {"name": "Drake Hotline Bling", "url": "https://example.com/drake.jpg"},
+        {"name": "Two Buttons", "url": "https://example.com/buttons.jpg"},
+        {"name": "Gru's Plan", "url": "https://example.com/gru.jpg"},
+    ]
+
+    selected = module.select_templates(templates, 4)
+
+    assert [template["name"] for template in selected] == [
+        "Drake Hotline Bling",
+        "Two Buttons",
+        "Distracted Boyfriend",
+        "Change My Mind",
+    ]
+
+
+def test_select_templates_falls_back_to_remaining_items(load_tool_module):
+    module = load_tool_module("xmeme")
+
+    templates = [
+        {"name": "Ancient Aliens", "url": "https://example.com/aliens.jpg"},
+        {"name": "Woman Yelling At Cat", "url": "https://example.com/cat.jpg"},
+        {"name": "Is This A Pigeon", "url": "https://example.com/pigeon.jpg"},
+    ]
+
+    selected = module.select_templates(templates, 2)
+
+    assert [template["name"] for template in selected] == [
+        "Ancient Aliens",
+        "Woman Yelling At Cat",
+    ]
+
+
 def test_download_templates_fetches_and_saves_files(
     monkeypatch, capsys, load_tool_module, tmp_path
 ):
@@ -157,6 +196,7 @@ def test_download_templates_fetches_and_saves_files(
 
     payload = (
         b'{"success": true, "data": {"memes": ['
+        b'{"name": "Ancient Aliens", "url": "https://i.imgflip.com/aliens.jpg"},'
         b'{"name": "Drake Hotline Bling", "url": "https://i.imgflip.com/30b1gx.jpg"},'
         b'{"name": "Two Buttons", "url": "https://i.imgflip.com/1g8my4.jpg"}'
         b"]}}"
@@ -167,6 +207,8 @@ def test_download_templates_fetches_and_saves_files(
         assert timeout == 30
         if url == module.IMGFLIP_API_URL:
             return FakeResponse(payload)
+        if url == "https://i.imgflip.com/aliens.jpg":
+            return FakeResponse(b"aliens")
         if url == "https://i.imgflip.com/30b1gx.jpg":
             return FakeResponse(b"drake")
         if url == "https://i.imgflip.com/1g8my4.jpg":
