@@ -14,6 +14,7 @@ Usage:
 
 ```bash
 xpost <command> [args] [--json]
+xpost --text "text" [--media /path/to/file]
 xpost --help
 ```
 
@@ -23,6 +24,7 @@ Commands:
 | --- | --- |
 | `xpost whoami` | Show the authenticated user. |
 | `xpost tweet "text"` | Post a tweet. |
+| `xpost --text "text" [--media /path/to/file]` | Post a tweet directly with optional media. |
 | `xpost reply <tweet_id> "text"` | Reply to a tweet. |
 | `xpost quote <tweet_id> "text"` | Quote-tweet a post. |
 | `xpost read <tweet_id>` | Read a single tweet. |
@@ -44,6 +46,7 @@ Commands:
 Options and behavior:
 
 - `--json` is supported by `whoami` and `user`.
+- `--media` uploads one file before posting and can be used with `--text`.
 - Tweet IDs must be numeric.
 - Credentials are loaded from `X_KEYS_FILE` or `~/.config/x-api/keys.env`.
 

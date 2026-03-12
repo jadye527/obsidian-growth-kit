@@ -19,6 +19,7 @@ HELP_TEXT = """xpost — X/Twitter CLI
 
 Usage:
   xpost <command> [args] [--json]
+  xpost --text "text" [--media /path/to/file]
   xpost --help
 
 Commands:
@@ -45,6 +46,7 @@ Commands:
 Examples:
   xpost whoami
   xpost tweet "Shipping the help flag today"
+  xpost --media ~/image.png --text "Shipping with media"
   xpost reply 1234567890 "Thanks for the feedback"
   xpost search "obsidian growth" --json
 """
@@ -96,6 +98,19 @@ def get_client(env):
     )
 
 
+def get_media_api(env):
+    """Create a Tweepy API client for media uploads."""
+    import tweepy
+
+    auth = tweepy.OAuth1UserHandler(
+        env["X_API_KEY"],
+        env["X_API_SECRET"],
+        env["X_ACCESS_TOKEN"],
+        env["X_ACCESS_TOKEN_SECRET"],
+    )
+    return tweepy.API(auth)
+
+
 def exit_error(message):
     """Print an actionable error message and exit."""
     print(message, file=sys.stderr)
@@ -107,6 +122,66 @@ def validate_tweet_id(tweet_id):
     if not tweet_id or not str(tweet_id).isdigit():
         exit_error(f"Invalid tweet ID: {tweet_id!r}. Tweet IDs must be numeric.")
     return tweet_id
+
+
+def parse_post_options(args):
+    """Parse flag-based tweet options from argv."""
+    text = None
+    media_path = None
+    index = 0
+
+    while index < len(args):
+        arg = args[index]
+        if arg == "--text":
+            if index + 1 >= len(args):
+                exit_error("Usage: xpost --text \"your message\" [--media /path/to/file]")
+            text = args[index + 1]
+            index += 2
+            continue
+        if arg == "--media":
+            if index + 1 >= len(args):
+                exit_error("Usage: xpost --text \"your message\" [--media /path/to/file]")
+            media_path = os.path.expanduser(args[index + 1])
+            index += 2
+            continue
+        if arg == "--json":
+            index += 1
+            continue
+        exit_error(f"Unknown command: {arg}")
+
+    if text is None and media_path is None:
+        return None
+
+    if not text and not media_path:
+        exit_error("Usage: xpost --text \"your message\" [--media /path/to/file]")
+
+    if media_path and not os.path.isfile(media_path):
+        exit_error(f"Media file not found: {media_path}")
+
+    return {"text": text, "media_path": media_path}
+
+
+def is_flag_post_request(args):
+    """Return True when argv uses the flag-based post form."""
+    return "--text" in args or "--media" in args
+
+
+def create_post(client, env, text=None, media_path=None):
+    """Create a tweet, optionally uploading one media file first."""
+    media_ids = None
+    if media_path:
+        media_api = get_media_api(env)
+        media = media_api.media_upload(filename=media_path)
+        media_id = getattr(media, "media_id_string", None) or str(media.media_id)
+        media_ids = [media_id]
+
+    payload = {}
+    if text:
+        payload["text"] = text
+    if media_ids:
+        payload["media_ids"] = media_ids
+
+    return client.create_tweet(**payload)
 
 
 def handle_runtime_error(exc):
@@ -161,6 +236,20 @@ def main():
         return
 
     try:
+        if is_flag_post_request(args):
+            post_options = parse_post_options(args)
+            env = load_keys()
+            client = get_client(env)
+            resp = create_post(
+                client,
+                env,
+                text=post_options["text"],
+                media_path=post_options["media_path"],
+            )
+            tid = resp.data["id"]
+            print(f"Tweet posted: https://x.com/{env.get('X_USER_HANDLE', 'i')}/status/{tid}")
+            return
+
         env = load_keys()
         client = get_client(env)
         cmd = args[0]
@@ -182,7 +271,7 @@ def main():
             text = args[1] if len(args) > 1 else None
             if not text:
                 exit_error("Usage: xpost tweet \"your message\"")
-            resp = client.create_tweet(text=text)
+            resp = create_post(client, env, text=text)
             tid = resp.data["id"]
             print(f"Tweet posted: https://x.com/{env.get('X_USER_HANDLE', 'i')}/status/{tid}")
 

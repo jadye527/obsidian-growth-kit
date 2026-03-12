@@ -18,6 +18,7 @@ def test_api_reference_lists_every_command(repo_root):
     commands = (
         "xpost whoami",
         'xpost tweet "text"',
+        'xpost --text "text" [--media /path/to/file]',
         'xpost reply <tweet_id> "text"',
         'xpost quote <tweet_id> "text"',
         "xpost read <tweet_id>",
