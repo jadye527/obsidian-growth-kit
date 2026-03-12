@@ -6,27 +6,27 @@ Enhance the agent orchestration dashboard. The v1 HTML is at `/home/jasondye/ope
 ## Requirements
 
 ### Data Collection Layer
-- [ ] Create `collect.py` in agent-dashboard/ — scans agent state, writes `dashboard-state.json`
-- [ ] Scan tmux sessions for agent health (`tmux -S ~/.tmux/sock list-sessions`)
-- [ ] Read PRD.md files from agent dirs for task progress (checked vs unchecked)
-- [ ] Parse `/tmp/metar_daemon.log` tail for daemon status
-- [ ] Check process health: `pgrep -f` for metar_daemon, five_min_monitor, xqueue
-- [ ] Read paper_trades.db for trading stats (win rate, P&L, last trade date)
+- [x] Create `collect.py` in agent-dashboard/ — scans agent state, writes `dashboard-state.json`
+- [x] Scan tmux sessions for agent health (`tmux -S ~/.tmux/sock list-sessions`)
+- [x] Read PRD.md files from agent dirs for task progress (checked vs unchecked)
+- [x] Parse `/tmp/metar_daemon.log` tail for daemon status
+- [x] Check process health: `pgrep -f` for metar_daemon, five_min_monitor, xqueue
+- [x] Read paper_trades.db for trading stats (win rate, P&L, last trade date)
 
 ### Dashboard Enhancements
-- [ ] Make `index.html` fetch `dashboard-state.json` instead of hardcoded DATA
-- [ ] Add auto-refresh (poll every 60 seconds)
-- [ ] Add "last refreshed" live timestamp
-- [ ] Add responsive mobile layout
-- [ ] Add expandable task details on click
+- [x] Make `index.html` fetch `dashboard-state.json` instead of hardcoded DATA
+- [x] Add auto-refresh (poll every 60 seconds)
+- [x] Add "last refreshed" live timestamp
+- [x] Add responsive mobile layout
+- [x] Add expandable task details on click
 
 ### Cost Tracking
-- [ ] Create `cost-tracker.json` format for monthly cost entries
-- [ ] Render cost history chart (month-over-month)
+- [x] Create `cost-tracker.json` format for monthly cost entries
+- [x] Render cost history chart (month-over-month)
 
 ### Agent Communication Log
-- [ ] Create `activity-log.jsonl` that agents append events to
-- [ ] Display in timeline with filtering by agent
+- [x] Create `activity-log.jsonl` that agents append events to
+- [x] Display in timeline with filtering by agent
 
 ## Tech Stack
 - Pure HTML/CSS/JS (no build tools, no npm)
