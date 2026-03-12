@@ -48,6 +48,7 @@ def test_install_uses_home_for_config_and_bin_dirs(repo_root, install_env):
     assert (fake_home / ".local" / "bin" / "xcron").is_file()
     assert (fake_home / ".local" / "bin" / "xmiddleware").is_file()
     assert (fake_home / ".local" / "bin" / "xcleanup").is_file()
+    assert (fake_home / ".local" / "bin" / "xmeme").is_file()
     assert not (repo_root / "~").exists()
     assert str(fake_home / ".config" / "x-api" / "keys.env") in result.stdout
 

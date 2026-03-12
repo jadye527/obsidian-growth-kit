@@ -10,8 +10,12 @@ def test_release_post_cron_example_targets_requested_post(repo_root):
     assert "18 9 13 3 *" in cron_text
     assert 'TODAY="$(date +\\%F)"' in cron_text
     assert '"$TODAY" = "2026-03-13"' in cron_text
+    assert 'MEME_PATH="$(xmeme generate' in cron_text
+    assert 'X_MEMEGEN_PATH:-$HOME/.openclaw/workspace-obsidian/out/memegen.py' in cron_text
+    assert '--output-dir "$OGK_REPO_DIR/out"' in cron_text
+    assert '--prefix release-post' in cron_text
     assert "x-post-release-package-2026-03-12.md" in cron_text
-    assert "out/charlie_fire_v1d.png" in cron_text
+    assert '--media "$MEME_PATH"' in cron_text
 
 
 def test_openclaw_cron_jobs_invoke_autonomous_scripts(repo_root):

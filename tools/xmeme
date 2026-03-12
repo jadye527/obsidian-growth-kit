@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""xmeme — Generate a fresh meme image for posting."""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+from uuid import uuid4
+
+DEFAULT_MEMEGEN_PATH = os.environ.get("X_MEMEGEN_PATH")
+DEFAULT_MEMEGEN_PYTHON = os.environ.get("X_MEMEGEN_PYTHON", sys.executable)
+
+HELP_TEXT = """xmeme — Fresh meme generator
+
+Usage:
+  xmeme generate --template <name> --top-text <text>
+                 [--bottom-text <text>] --output-dir <dir>
+                 [--prefix <name>] [--generator <path>] [--python <path>]
+  xmeme --help
+
+Commands:
+  generate                  Create a new meme image with a unique filename
+
+Options:
+  --template <name>         Template filename to pass to memegen.py
+  --top-text <text>         Top meme text
+  --bottom-text <text>      Bottom meme text
+  --output-dir <dir>        Directory where the new image will be written
+  --prefix <name>           Filename prefix for the generated image
+  --generator <path>        Path to memegen.py (defaults to X_MEMEGEN_PATH)
+  --python <path>           Python executable for the generator
+
+Examples:
+  xmeme generate --template drake.jpg --top-text "Ship now"
+                 --bottom-text "Polish later"
+                 --output-dir ~/workspace-obsidian/out
+  xmeme generate --template fire.jpg --top-text "Launch day"
+                 --output-dir ~/workspace-obsidian/out --prefix release
+"""
+
+
+def print_help() -> None:
+    """Print the CLI help text."""
+    print(HELP_TEXT)
+
+
+def exit_error(message: str) -> None:
+    """Print an actionable error message and exit with status 1."""
+    print(message, file=sys.stderr)
+    raise SystemExit(1)
+
+
+def parse_generate_args(args: list[str]) -> dict[str, str]:
+    """Parse and validate generate command arguments."""
+    options: dict[str, str] = {
+        "generator": DEFAULT_MEMEGEN_PATH or "",
+        "python": DEFAULT_MEMEGEN_PYTHON,
+        "prefix": "meme",
+    }
+    index = 0
+
+    while index < len(args):
+        token = args[index]
+        if token in {
+            "--template",
+            "--top-text",
+            "--bottom-text",
+            "--output-dir",
+            "--prefix",
+            "--generator",
+            "--python",
+        }:
+            if index + 1 >= len(args):
+                exit_error(f"Missing value for {token}")
+            option_name = token[2:].replace("-", "_")
+            options[option_name] = args[index + 1]
+            index += 2
+            continue
+        exit_error(f"Unknown option: {token}")
+
+    required = ("template", "top_text", "output_dir")
+    missing = [name for name in required if not options.get(name)]
+    if missing:
+        exit_error(
+            "Usage: xmeme generate --template <name> --top-text <text> "
+            "[--bottom-text <text>] --output-dir <dir> [--prefix <name>] "
+            "[--generator <path>] [--python <path>]"
+        )
+
+    if not options.get("generator"):
+        exit_error(
+            "memegen.py path not provided. Use --generator or set X_MEMEGEN_PATH."
+        )
+
+    return options
+
+
+def build_output_path(output_dir: str, prefix: str) -> str:
+    """Return a unique output path for a generated meme image."""
+    expanded_dir = os.path.expanduser(output_dir)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    unique_suffix = uuid4().hex[:8]
+    filename = f"{prefix}_{timestamp}_{unique_suffix}.png"
+    return os.path.join(expanded_dir, filename)
+
+
+def generate_meme(options: dict[str, str]) -> str:
+    """Generate a meme with a unique filename and return the created path."""
+    generator_path = os.path.expanduser(options["generator"])
+    python_path = os.path.expanduser(options["python"])
+    output_dir = os.path.expanduser(options["output_dir"])
+    output_path = build_output_path(output_dir, options["prefix"])
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    command = [
+        python_path,
+        generator_path,
+        options["template"],
+        options["top_text"],
+    ]
+    if options.get("bottom_text"):
+        command.append(options["bottom_text"])
+    command.extend(["--output", output_path])
+
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        details = result.stderr.strip() or result.stdout.strip() or "command failed"
+        exit_error(f"meme generation failed: {details}")
+
+    if not os.path.isfile(output_path):
+        exit_error(f"meme generation did not create output file: {output_path}")
+
+    print(output_path)
+    return output_path
+
+
+def main() -> None:
+    """Run the xmeme command-line interface."""
+    args = sys.argv[1:]
+    if not args or args[0] in {"-h", "--help"}:
+        print_help()
+        return
+
+    command = args[0]
+    if command != "generate":
+        exit_error(f"Unknown command: {command}")
+
+    options = parse_generate_args(args[1:])
+    generate_meme(options)
+
+
+if __name__ == "__main__":
+    main()
