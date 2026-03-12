@@ -45,6 +45,20 @@ def test_build_output_path_is_unique(monkeypatch, load_tool_module, tmp_path):
     assert second.name == "release_20260312T184500Z_11112222.png"
 
 
+def test_build_fresh_output_path_skips_existing_files(
+    monkeypatch, load_tool_module, tmp_path
+):
+    module = load_tool_module("xmeme")
+    existing = tmp_path / "release_existing.png"
+    fresh = tmp_path / "release_fresh.png"
+    existing.write_bytes(b"old")
+    candidates = iter([str(existing), str(fresh)])
+
+    monkeypatch.setattr(module, "build_output_path", lambda output_dir, prefix: next(candidates))
+
+    assert module.build_fresh_output_path(str(tmp_path), "release") == str(fresh)
+
+
 def test_generate_meme_runs_generator_and_prints_new_path(
     monkeypatch, capsys, load_tool_module, tmp_path
 ):

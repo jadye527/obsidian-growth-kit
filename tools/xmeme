@@ -149,6 +149,14 @@ def build_output_path(output_dir: str, prefix: str) -> str:
     return os.path.join(expanded_dir, filename)
 
 
+def build_fresh_output_path(output_dir: str, prefix: str) -> str:
+    """Return a new output path that does not already exist."""
+    while True:
+        output_path = build_output_path(output_dir, prefix)
+        if not os.path.exists(output_path):
+            return output_path
+
+
 def slugify_template_name(name: str) -> str:
     """Convert a template name into a stable filename prefix."""
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
@@ -215,7 +223,7 @@ def generate_meme(options: dict[str, str]) -> str:
     generator_path = os.path.expanduser(options["generator"])
     python_path = os.path.expanduser(options["python"])
     output_dir = os.path.expanduser(options["output_dir"])
-    output_path = build_output_path(output_dir, options["prefix"])
+    output_path = build_fresh_output_path(output_dir, options["prefix"])
 
     os.makedirs(output_dir, exist_ok=True)
 
