@@ -165,3 +165,119 @@ def test_load_scout_results_reads_configured_file(
     monkeypatch.setattr(module, "SCOUT_RESULTS_FILE", str(results_path))
 
     assert module.load_scout_results() == [{"id": "1", "text": "hello"}]
+
+
+def test_publish_meme_post_runs_full_pipeline(
+    tmp_path, monkeypatch, load_tool_module
+):
+    module = load_tool_module("xcron")
+    commands = []
+    post_file = tmp_path / "post.md"
+    self_reply_file = tmp_path / "self-reply.md"
+    mention_reply_file = tmp_path / "mention-reply.md"
+    post_file.write_text("Main post copy\n", encoding="utf-8")
+    self_reply_file.write_text("First reply with the link", encoding="utf-8")
+    mention_reply_file.write_text("Appreciate the mention.", encoding="utf-8")
+
+    def fake_run_command(args, dry_run=False):
+        commands.append((args, dry_run))
+        if args[:2] == ["xmeme", "generate"]:
+            return "/tmp/generated-meme.png"
+        if args[0:2] == ["xpost", "--text-file"]:
+            return "Tweet posted: https://x.com/tester/status/111"
+        if args == ["xpost", "mentions"]:
+            return (
+                "@alice · 2026-03-12 10:00:00+00:00\n"
+                "Congrats on the launch\n"
+                "♥ 4  🔁 0  💬 1  id:222\n"
+                "---\n"
+                "@bob · 2026-03-12 11:00:00+00:00\n"
+                "Nice meme\n"
+                "♥ 2  🔁 0  💬 0  id:333\n"
+                "---\n"
+            )
+        return ""
+
+    monkeypatch.setattr(module, "run_command", fake_run_command)
+
+    module.run_publish_meme_post(
+        [
+            "--template",
+            "drake.jpg",
+            "--top-text",
+            "Ship now",
+            "--bottom-text",
+            "Polish later",
+            "--output-dir",
+            str(tmp_path / "out"),
+            "--generator",
+            "~/memegen.py",
+            "--python",
+            "~/venv/bin/python",
+            "--text-file",
+            str(post_file),
+            "--self-reply-file",
+            str(self_reply_file),
+            "--mention-reply-file",
+            str(mention_reply_file),
+            "--mentions-limit",
+            "2",
+        ]
+    )
+
+    assert commands == [
+        (
+            [
+                "xmeme",
+                "generate",
+                "--template",
+                "drake.jpg",
+                "--top-text",
+                "Ship now",
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--bottom-text",
+                "Polish later",
+                "--generator",
+                "~/memegen.py",
+                "--python",
+                "~/venv/bin/python",
+            ],
+            False,
+        ),
+        (
+            [
+                "xpost",
+                "--text-file",
+                str(post_file),
+                "--media",
+                "/tmp/generated-meme.png",
+            ],
+            False,
+        ),
+        (
+            ["xpost", "reply", "111", "First reply with the link"],
+            False,
+        ),
+        (["xpost", "mentions"], False),
+        (
+            ["xpost", "reply", "222", "Appreciate the mention."],
+            False,
+        ),
+        (
+            ["xpost", "reply", "333", "Appreciate the mention."],
+            False,
+        ),
+    ]
+
+
+def test_extract_mention_ids_deduplicates_numeric_ids(load_tool_module):
+    module = load_tool_module("xcron")
+
+    mention_ids = module.extract_mention_ids(
+        "♥ 1  🔁 0  💬 0  id:222\n"
+        "♥ 2  🔁 0  💬 0  id:333\n"
+        "♥ 3  🔁 0  💬 0  id:222\n"
+    )
+
+    assert mention_ids == ["222", "333"]

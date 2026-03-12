@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -16,7 +17,7 @@ MAX_POST_LENGTH = 280
 HELP_TEXT = """xcron — Autonomous scheduled workflows for X growth
 
 Usage:
-  xcron <command> [--dry-run]
+  xcron <command> [options] [--dry-run]
   xcron --help
 
 Commands:
@@ -24,6 +25,8 @@ Commands:
   content-scout        Run the midday scouting and engagement pipeline
   nightly-review       Run the nightly review and queue refresh pipeline
   analytics-snapshot   Capture an analytics snapshot only
+  publish-meme-post    Generate a meme, publish a post, add a self-reply,
+                       and reply to recent mentions
 
 Options:
   --dry-run            Print commands without executing them
@@ -33,6 +36,9 @@ Examples:
   xcron content-scout
   xcron nightly-review --dry-run
   xcron analytics-snapshot
+  xcron publish-meme-post --template drake.jpg --top-text "Ship it"
+       --output-dir ~/obsidian-growth-kit/out --text-file ~/post.md
+       --self-reply-file ~/reply.md --mention-reply-file ~/mentions.md
 """
 
 
@@ -49,7 +55,7 @@ def exit_error(message: str) -> None:
 
 def parse_args(args: list[str]) -> dict[str, object]:
     """Parse and validate top-level CLI arguments."""
-    options: dict[str, object] = {"dry_run": False}
+    options: dict[str, object] = {"dry_run": False, "command_args": []}
     positionals: list[str] = []
 
     for arg in args:
@@ -69,10 +75,8 @@ def parse_args(args: list[str]) -> dict[str, object]:
     if not positionals:
         return {"help": True}
 
-    if len(positionals) != 1:
-        exit_error("Usage: xcron <command> [--dry-run]")
-
     options["command"] = positionals[0]
+    options["command_args"] = positionals[1:]
     return options
 
 
@@ -218,6 +222,164 @@ def like_top_scout_results(
     return liked
 
 
+def parse_publish_meme_post_args(args: list[str]) -> dict[str, object]:
+    """Parse and validate publish-meme-post options."""
+    options: dict[str, object] = {
+        "bottom_text": "",
+        "generator": "",
+        "python": "",
+        "mentions_limit": 10,
+    }
+    index = 0
+
+    while index < len(args):
+        token = args[index]
+        if token in {
+            "--template",
+            "--top-text",
+            "--bottom-text",
+            "--output-dir",
+            "--generator",
+            "--python",
+            "--text-file",
+            "--self-reply-file",
+            "--mention-reply-file",
+        }:
+            if index + 1 >= len(args):
+                exit_error(f"Missing value for {token}")
+            options[token[2:].replace("-", "_")] = args[index + 1]
+            index += 2
+            continue
+        if token == "--mentions-limit":
+            if index + 1 >= len(args):
+                exit_error(f"Missing value for {token}")
+            limit_text = args[index + 1]
+            if not limit_text.isdigit() or int(limit_text) <= 0:
+                exit_error("--mentions-limit must be a positive integer")
+            options["mentions_limit"] = int(limit_text)
+            index += 2
+            continue
+        exit_error(f"Unknown option: {token}")
+
+    required = [
+        "template",
+        "top_text",
+        "output_dir",
+        "text_file",
+        "self_reply_file",
+        "mention_reply_file",
+    ]
+    missing = [name for name in required if not options.get(name)]
+    if missing:
+        exit_error(
+            "Usage: xcron publish-meme-post --template <name> --top-text <text> "
+            "[--bottom-text <text>] --output-dir <dir> [--generator <path>] "
+            "[--python <path>] --text-file <path> --self-reply-file <path> "
+            "--mention-reply-file <path> [--mentions-limit <number>]"
+        )
+
+    return options
+
+
+def load_text_file(path: str) -> str:
+    """Read UTF-8 text from a file path."""
+    expanded_path = os.path.expanduser(path)
+    try:
+        with open(expanded_path, encoding="utf-8") as file_handle:
+            return file_handle.read().strip()
+    except OSError as exc:
+        exit_error(f"Unable to read text file {expanded_path}: {exc}")
+        raise AssertionError from exc
+
+
+def extract_tweet_id(output: str) -> str:
+    """Extract a tweet ID from xpost output."""
+    match = re.search(r"/status/(\d+)", output)
+    if match:
+        return match.group(1)
+    match = re.search(r"id:(\d+)", output)
+    if match:
+        return match.group(1)
+    exit_error(f"Unable to find tweet ID in xpost output: {output!r}")
+    raise AssertionError
+
+
+def extract_mention_ids(output: str) -> list[str]:
+    """Parse mention tweet IDs from xpost mentions output."""
+    ids: list[str] = []
+    seen: set[str] = set()
+
+    for line in output.splitlines():
+        match = re.search(r"id:(\d+)", line)
+        if not match:
+            continue
+        tweet_id = match.group(1)
+        if tweet_id in seen:
+            continue
+        seen.add(tweet_id)
+        ids.append(tweet_id)
+
+    return ids
+
+
+def build_meme_command(options: dict[str, object]) -> list[str]:
+    """Build the xmeme generate command from parsed options."""
+    command = [
+        "xmeme",
+        "generate",
+        "--template",
+        str(options["template"]),
+        "--top-text",
+        str(options["top_text"]),
+        "--output-dir",
+        str(options["output_dir"]),
+    ]
+
+    if options.get("bottom_text"):
+        command.extend(["--bottom-text", str(options["bottom_text"])])
+    if options.get("generator"):
+        command.extend(["--generator", str(options["generator"])])
+    if options.get("python"):
+        command.extend(["--python", str(options["python"])])
+
+    return command
+
+
+def run_publish_meme_post(command_args: list[str], dry_run: bool = False) -> None:
+    """Run the meme publish pipeline from content generation through replies."""
+    options = parse_publish_meme_post_args(command_args)
+    meme_path = run_command(build_meme_command(options), dry_run=dry_run)
+    if dry_run:
+        meme_path = "<generated-meme>"
+
+    post_output = run_command(
+        [
+            "xpost",
+            "--text-file",
+            os.path.expanduser(str(options["text_file"])),
+            "--media",
+            meme_path,
+        ],
+        dry_run=dry_run,
+    )
+    if dry_run:
+        return
+
+    post_id = extract_tweet_id(post_output)
+    self_reply_text = load_text_file(str(options["self_reply_file"]))
+    run_command(["xpost", "reply", post_id, self_reply_text], dry_run=dry_run)
+
+    mention_reply_text = load_text_file(str(options["mention_reply_file"]))
+    mentions_output = run_command(["xpost", "mentions"], dry_run=dry_run)
+    mention_ids = extract_mention_ids(mentions_output)
+
+    for mention_id in mention_ids[: int(options["mentions_limit"])]:
+        run_command(
+            ["xpost", "reply", mention_id, mention_reply_text],
+            dry_run=dry_run,
+        )
+
+
 def run_morning_growth(dry_run: bool = False) -> None:
     """Run the daily morning growth pipeline."""
     run_command(["xanalytics", "snapshot"], dry_run=dry_run)
@@ -256,19 +418,31 @@ def main() -> None:
         return
 
     command = str(options["command"])
+    command_args = list(options["command_args"])
     dry_run = bool(options["dry_run"])
 
     if command == "morning-growth":
+        if command_args:
+            exit_error("Usage: xcron morning-growth [--dry-run]")
         run_morning_growth(dry_run=dry_run)
         return
     if command == "content-scout":
+        if command_args:
+            exit_error("Usage: xcron content-scout [--dry-run]")
         run_content_scout(dry_run=dry_run)
         return
     if command == "nightly-review":
+        if command_args:
+            exit_error("Usage: xcron nightly-review [--dry-run]")
         run_nightly_review(dry_run=dry_run)
         return
     if command == "analytics-snapshot":
+        if command_args:
+            exit_error("Usage: xcron analytics-snapshot [--dry-run]")
         run_analytics_snapshot(dry_run=dry_run)
+        return
+    if command == "publish-meme-post":
+        run_publish_meme_post(command_args, dry_run=dry_run)
         return
 
     exit_error(f"Unknown command: {command}")
