@@ -1,0 +1,144 @@
+#!/usr/bin/env python3
+"""xcleanup — Remove temporary meme images from a public directory."""
+from __future__ import annotations
+
+import os
+import sys
+
+HELP_TEXT = """xcleanup — Public Asset Cleanup
+
+Usage:
+  xcleanup remove-meme-images --path <public-dir> [--name-contains <text>] [--dry-run]
+  xcleanup --help
+
+Commands:
+  remove-meme-images      Delete matching image files from a public directory
+
+Options:
+  --path <public-dir>     Directory to scan
+  --name-contains <text>  Match filenames containing this text
+  --dry-run               Show files that would be removed without deleting them
+
+Examples:
+  xcleanup remove-meme-images --path ~/workspace-obsidian/mission-control/public
+  xcleanup remove-meme-images --path ~/workspace-obsidian/mission-control/public --name-contains launch --dry-run
+"""
+
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
+DEFAULT_NAME_MARKERS = ("meme", "charlie")
+
+
+def print_help() -> None:
+    """Print the CLI help text."""
+    print(HELP_TEXT)
+
+
+def exit_error(message: str) -> None:
+    """Print an actionable error message and exit with status 1."""
+    print(message, file=sys.stderr)
+    raise SystemExit(1)
+
+
+def parse_remove_args(args: list[str]) -> dict[str, object]:
+    """Parse and validate remove-meme-images arguments."""
+    options: dict[str, object] = {
+        "dry_run": False,
+        "name_markers": list(DEFAULT_NAME_MARKERS),
+    }
+    index = 0
+
+    while index < len(args):
+        token = args[index]
+        if token == "--path":
+            if index + 1 >= len(args):
+                exit_error("Missing value for --path")
+            options["path"] = os.path.expanduser(args[index + 1])
+            index += 2
+            continue
+        if token == "--name-contains":
+            if index + 1 >= len(args):
+                exit_error("Missing value for --name-contains")
+            options["name_markers"].append(args[index + 1].lower())
+            index += 2
+            continue
+        if token == "--dry-run":
+            options["dry_run"] = True
+            index += 1
+            continue
+        exit_error(f"Unknown option: {token}")
+
+    if "path" not in options:
+        exit_error(
+            "Usage: xcleanup remove-meme-images --path <public-dir> "
+            "[--name-contains <text>] [--dry-run]"
+        )
+
+    return options
+
+
+def is_matching_image(filename: str, name_markers: list[str]) -> bool:
+    """Return True when a filename looks like a temporary meme image."""
+    lower_name = filename.lower()
+    _, extension = os.path.splitext(lower_name)
+    if extension not in IMAGE_EXTENSIONS:
+        return False
+    return any(marker in lower_name for marker in name_markers)
+
+
+def find_matching_images(public_dir: str, name_markers: list[str]) -> list[str]:
+    """Return matching image file paths in the target public directory."""
+    if not os.path.isdir(public_dir):
+        exit_error(f"Public directory not found: {public_dir}")
+
+    matches = []
+    for entry in sorted(os.listdir(public_dir)):
+        entry_path = os.path.join(public_dir, entry)
+        if not os.path.isfile(entry_path):
+            continue
+        if is_matching_image(entry, name_markers):
+            matches.append(entry_path)
+    return matches
+
+
+def remove_meme_images(
+    public_dir: str, *, name_markers: list[str] | None = None, dry_run: bool = False
+) -> list[str]:
+    """Delete matching image files and return the affected paths."""
+    markers = name_markers or list(DEFAULT_NAME_MARKERS)
+    matches = find_matching_images(public_dir, markers)
+
+    if dry_run:
+        for path in matches:
+            print(f"Would remove: {path}")
+        print(f"Dry run complete. {len(matches)} file(s) matched.")
+        return matches
+
+    for path in matches:
+        os.remove(path)
+        print(f"Removed: {path}")
+
+    print(f"Cleanup complete. Removed {len(matches)} file(s).")
+    return matches
+
+
+def main() -> None:
+    """Run the CLI entrypoint."""
+    args = sys.argv[1:]
+    if not args or args[0] == "--help":
+        print_help()
+        return
+
+    command = args[0]
+    if command != "remove-meme-images":
+        exit_error(f"Unknown command: {command}")
+
+    options = parse_remove_args(args[1:])
+    remove_meme_images(
+        str(options["path"]),
+        name_markers=list(options["name_markers"]),
+        dry_run=bool(options["dry_run"]),
+    )
+
+
+if __name__ == "__main__":
+    main()
