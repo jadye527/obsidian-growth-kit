@@ -4,6 +4,7 @@ Uses tweepy + OAuth 1.0a for read/write operations.
 Credentials from ~/.config/x-api/keys.env
 """
 import json
+import mimetypes
 import os
 import sys
 
@@ -170,9 +171,7 @@ def create_post(client, env, text=None, media_path=None):
     """Create a tweet, optionally uploading one media file first."""
     media_ids = None
     if media_path:
-        media_api = get_media_api(env)
-        media = media_api.media_upload(filename=media_path)
-        media_id = getattr(media, "media_id_string", None) or str(media.media_id)
+        media_id = upload_media(env, media_path)
         media_ids = [media_id]
 
     payload = {}
@@ -181,7 +180,28 @@ def create_post(client, env, text=None, media_path=None):
     if media_ids:
         payload["media_ids"] = media_ids
 
-    return client.create_tweet(**payload)
+    return client.create_tweet(user_auth=True, **payload)
+
+
+def upload_media(env, media_path):
+    """Upload media with the Tweepy API and return a media ID string."""
+    media_api = get_media_api(env)
+    media_type = mimetypes.guess_type(media_path)[0] or ""
+
+    if media_type.startswith("video/"):
+        media = media_api.chunked_upload(filename=media_path)
+    else:
+        media = media_api.simple_upload(filename=media_path)
+
+    media_id = getattr(media, "media_id_string", None)
+    if media_id:
+        return media_id
+
+    raw_media_id = getattr(media, "media_id", None)
+    if raw_media_id is not None:
+        return str(raw_media_id)
+
+    raise ValueError(f"Media upload did not return a media ID for {media_path}")
 
 
 def handle_runtime_error(exc):

@@ -171,7 +171,7 @@ def test_flag_post_with_media_uploads_and_posts(
             return types.SimpleNamespace(data={"id": "123"})
 
     class FakeMediaApi:
-        def media_upload(self, filename):
+        def simple_upload(self, filename):
             calls["media"] = filename
             return types.SimpleNamespace(media_id_string="999")
 
@@ -201,6 +201,97 @@ def test_flag_post_with_media_uploads_and_posts(
     assert calls["tweet"] == {"text": "test", "media_ids": ["999"]}
     assert "https://x.com/tester/status/123" in captured.out
     assert captured.err == ""
+
+
+def test_flag_post_with_video_uses_chunked_upload(
+    monkeypatch, capsys, load_tool_module, tmp_path
+):
+    module = load_tool_module("xpost")
+    media_file = tmp_path / "clip.mp4"
+    media_file.write_bytes(b"mp4")
+    calls = {}
+
+    class FakeClient:
+        def create_tweet(self, **kwargs):
+            calls["tweet"] = kwargs
+            return types.SimpleNamespace(data={"id": "456"})
+
+    class FakeMediaApi:
+        def chunked_upload(self, filename):
+            calls["media"] = filename
+            return types.SimpleNamespace(media_id=321)
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["xpost", "--media", str(media_file), "--text", "video test"],
+    )
+    monkeypatch.setattr(
+        module,
+        "load_keys",
+        lambda: {
+            "X_API_KEY": "key",
+            "X_API_SECRET": "secret",
+            "X_ACCESS_TOKEN": "token",
+            "X_ACCESS_TOKEN_SECRET": "token-secret",
+            "X_USER_HANDLE": "tester",
+        },
+    )
+    monkeypatch.setattr(module, "get_client", lambda env: FakeClient())
+    monkeypatch.setattr(module, "get_media_api", lambda env: FakeMediaApi())
+
+    module.main()
+
+    captured = capsys.readouterr()
+    assert calls["media"] == str(media_file)
+    assert calls["tweet"] == {
+        "text": "video test",
+        "media_ids": ["321"],
+        "user_auth": True,
+    }
+    assert "https://x.com/tester/status/456" in captured.out
+    assert captured.err == ""
+
+
+def test_flag_post_with_bad_media_response_exits(
+    monkeypatch, capsys, load_tool_module, tmp_path
+):
+    module = load_tool_module("xpost")
+    media_file = tmp_path / "image.png"
+    media_file.write_bytes(b"png")
+
+    class FakeClient:
+        def create_tweet(self, **kwargs):
+            raise AssertionError("tweet should not be created")
+
+    class FakeMediaApi:
+        def simple_upload(self, filename):
+            return types.SimpleNamespace()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["xpost", "--media", str(media_file), "--text", "test"],
+    )
+    monkeypatch.setattr(
+        module,
+        "load_keys",
+        lambda: {
+            "X_API_KEY": "key",
+            "X_API_SECRET": "secret",
+            "X_ACCESS_TOKEN": "token",
+            "X_ACCESS_TOKEN_SECRET": "token-secret",
+        },
+    )
+    monkeypatch.setattr(module, "get_client", lambda env: FakeClient())
+    monkeypatch.setattr(module, "get_media_api", lambda env: FakeMediaApi())
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert "X API error: Media upload did not return a media ID" in captured.err
 
 
 def test_flag_post_missing_media_file_exits_before_api_calls(
