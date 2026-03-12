@@ -302,17 +302,24 @@ def test_build_crontab_text_replaces_existing_managed_block(
 
     current_crontab = (
         "MAILTO=alerts@example.com\n"
-        "# BEGIN_OBSIDIAN_GROWTH_KIT_DAILY_POSTING\n"
+        "# BEGIN_OBSIDIAN_GROWTH_KIT_AUTONOMOUS_JOBS\n"
         "CRON_TZ=America/New_York\n"
         "0 8 * * * old-command\n"
-        "# END_OBSIDIAN_GROWTH_KIT_DAILY_POSTING\n"
+        "# END_OBSIDIAN_GROWTH_KIT_AUTONOMOUS_JOBS\n"
     )
 
     updated = module.build_crontab_text(current_crontab)
 
     assert updated.count(module.CRON_BLOCK_START) == 1
     assert "MAILTO=alerts@example.com" in updated
-    assert "0 9,18 * * *" in updated
+    assert "0 8 * * * PATH=/tmp/bin:/usr/local/bin:/usr/bin:/bin" in updated
+    assert "xcron morning-growth >/dev/null 2>&1" in updated
+    assert "23 9,12,15,18 * * * PATH=/tmp/bin:/usr/local/bin:/usr/bin:/bin" in updated
+    assert "xcron content-scout >/dev/null 2>&1" in updated
+    assert "0 22 * * * PATH=/tmp/bin:/usr/local/bin:/usr/bin:/bin" in updated
+    assert "xcron nightly-review >/dev/null 2>&1" in updated
+    assert "0 8,12,16,20 * * * PATH=/tmp/bin:/usr/local/bin:/usr/bin:/bin" in updated
+    assert "xcron analytics-snapshot >/dev/null 2>&1" in updated
     assert "old-command" not in updated
     assert updated.endswith("\n")
 
@@ -327,8 +334,6 @@ def test_install_schedule_prefers_systemd_and_enables_linger(
     loginctl_calls = []
 
     monkeypatch.setattr(module, "SYSTEMD_USER_DIR", str(systemd_dir))
-    monkeypatch.setattr(module, "SERVICE_FILE", str(systemd_dir / "ogk.service"))
-    monkeypatch.setattr(module, "TIMER_FILE", str(systemd_dir / "ogk.timer"))
     monkeypatch.setattr(module, "SYSTEMD_LINGER_USER", "tester")
     monkeypatch.setattr(
         module.shutil,
@@ -349,15 +354,48 @@ def test_install_schedule_prefers_systemd_and_enables_linger(
     module.install_schedule([])
 
     captured = capsys.readouterr()
-    assert "systemd timer installed at 9:00 AM and 6:00 PM ET" in captured.out
+    assert "systemd timers installed for autonomous X growth workflows" in captured.out
     assert "user lingering enabled for reboot persistence" in captured.out
     assert systemctl_calls == [
         ["systemctl", "--user", "daemon-reload"],
-        ["systemctl", "--user", "enable", "--now", "obsidian-growth-kit-post.timer"],
+        [
+            "systemctl",
+            "--user",
+            "enable",
+            "--now",
+            "obsidian-growth-kit-morning-growth.timer",
+        ],
+        [
+            "systemctl",
+            "--user",
+            "enable",
+            "--now",
+            "obsidian-growth-kit-content-scout.timer",
+        ],
+        [
+            "systemctl",
+            "--user",
+            "enable",
+            "--now",
+            "obsidian-growth-kit-nightly-review.timer",
+        ],
+        [
+            "systemctl",
+            "--user",
+            "enable",
+            "--now",
+            "obsidian-growth-kit-analytics-snapshot.timer",
+        ],
     ]
     assert loginctl_calls == [["loginctl", "enable-linger", "tester"]]
-    assert (systemd_dir / "ogk.service").is_file()
-    assert (systemd_dir / "ogk.timer").is_file()
+    assert (systemd_dir / "obsidian-growth-kit-morning-growth.service").is_file()
+    assert (systemd_dir / "obsidian-growth-kit-morning-growth.timer").is_file()
+    assert (systemd_dir / "obsidian-growth-kit-content-scout.service").is_file()
+    assert (systemd_dir / "obsidian-growth-kit-content-scout.timer").is_file()
+    assert (systemd_dir / "obsidian-growth-kit-nightly-review.service").is_file()
+    assert (systemd_dir / "obsidian-growth-kit-nightly-review.timer").is_file()
+    assert (systemd_dir / "obsidian-growth-kit-analytics-snapshot.service").is_file()
+    assert (systemd_dir / "obsidian-growth-kit-analytics-snapshot.timer").is_file()
 
 
 def test_install_schedule_falls_back_to_crontab_when_systemd_fails(
@@ -393,10 +431,13 @@ def test_install_schedule_falls_back_to_crontab_when_systemd_fails(
     module.install_schedule([])
 
     captured = capsys.readouterr()
-    assert "crontab installed at 9:00 AM and 6:00 PM ET" in captured.out
+    assert "crontab installed for autonomous X growth workflows" in captured.out
     assert len(crontab_inputs) == 1
     assert "MAILTO=alerts@example.com" in crontab_inputs[0]
-    assert "0 9,18 * * *" in crontab_inputs[0]
+    assert "xcron morning-growth >/dev/null 2>&1" in crontab_inputs[0]
+    assert "xcron content-scout >/dev/null 2>&1" in crontab_inputs[0]
+    assert "xcron nightly-review >/dev/null 2>&1" in crontab_inputs[0]
+    assert "xcron analytics-snapshot >/dev/null 2>&1" in crontab_inputs[0]
 
 
 def test_install_schedule_requires_crontab_when_requested(

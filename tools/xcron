@@ -27,11 +27,9 @@ QUEUE_FILE = os.path.expanduser(
 SYSTEMD_USER_DIR = os.path.expanduser(
     os.environ.get("X_SYSTEMD_USER_DIR", "~/.config/systemd/user")
 )
-SCHEDULER_NAME = "obsidian-growth-kit-post"
-SERVICE_FILE = os.path.join(SYSTEMD_USER_DIR, f"{SCHEDULER_NAME}.service")
-TIMER_FILE = os.path.join(SYSTEMD_USER_DIR, f"{SCHEDULER_NAME}.timer")
-CRON_BLOCK_START = "# BEGIN_OBSIDIAN_GROWTH_KIT_DAILY_POSTING"
-CRON_BLOCK_END = "# END_OBSIDIAN_GROWTH_KIT_DAILY_POSTING"
+SCHEDULER_PREFIX = "obsidian-growth-kit"
+CRON_BLOCK_START = "# BEGIN_OBSIDIAN_GROWTH_KIT_AUTONOMOUS_JOBS"
+CRON_BLOCK_END = "# END_OBSIDIAN_GROWTH_KIT_AUTONOMOUS_JOBS"
 SYSTEMD_LINGER_USER = os.environ.get(
     "SUDO_USER", os.environ.get("USER", "")
 )
@@ -44,7 +42,7 @@ Usage:
   xcron --help
 
 Commands:
-  install-schedule     Install a persistent 9 AM / 6 PM ET posting schedule
+  install-schedule     Install persistent autonomous workflow schedules
   morning-growth       Run the daily morning growth pipeline
   content-scout        Run the midday scouting and engagement pipeline
   nightly-review       Run the nightly review and queue refresh pipeline
@@ -194,15 +192,49 @@ def write_text_file(path: str, contents: str, dry_run: bool = False) -> None:
         file_handle.write(contents)
 
 
-def build_schedule_command() -> str:
-    """Build the scheduled post command with explicit environment."""
+def build_job_specs() -> list[dict[str, str]]:
+    """Return the autonomous workflow jobs managed by xcron."""
+    return [
+        {
+            "name": "morning-growth",
+            "cron_expr": "0 8 * * *",
+            "on_calendar": "*-*-* 08:00:00 America/New_York",
+            "command": "xcron morning-growth",
+        },
+        {
+            "name": "content-scout",
+            "cron_expr": "23 9,12,15,18 * * *",
+            "on_calendar": (
+                "*-*-* 09,12,15,18:23:00 America/New_York"
+            ),
+            "command": "xcron content-scout",
+        },
+        {
+            "name": "nightly-review",
+            "cron_expr": "0 22 * * *",
+            "on_calendar": "*-*-* 22:00:00 America/New_York",
+            "command": "xcron nightly-review",
+        },
+        {
+            "name": "analytics-snapshot",
+            "cron_expr": "0 8,12,16,20 * * *",
+            "on_calendar": (
+                "*-*-* 08,12,16,20:00:00 America/New_York"
+            ),
+            "command": "xcron analytics-snapshot",
+        },
+    ]
+
+
+def build_schedule_command(command: str) -> str:
+    """Build a scheduled autonomous job command with explicit environment."""
     path_value = f'{BIN_DIR}:/usr/local/bin:/usr/bin:/bin'
     env_bits = [
         f"PATH={shlex.quote(path_value)}",
         f"X_QUEUE_FILE={shlex.quote(QUEUE_FILE)}",
         f"X_KEYS_FILE={shlex.quote(KEYS_FILE)}",
     ]
-    return " ".join(env_bits) + " xqueue next >/dev/null 2>&1"
+    return " ".join(env_bits) + f" {command} >/dev/null 2>&1"
 
 
 def remove_managed_cron_block(crontab_text: str) -> str:
@@ -230,14 +262,13 @@ def build_crontab_text(existing_crontab: str) -> str:
 
     if preserved:
         lines.append(preserved)
-    lines.extend(
-        [
-            CRON_BLOCK_START,
-            "CRON_TZ=America/New_York",
-            f"0 9,18 * * * {build_schedule_command()}",
-            CRON_BLOCK_END,
-        ]
-    )
+    lines.append(CRON_BLOCK_START)
+    lines.append("CRON_TZ=America/New_York")
+    for job in build_job_specs():
+        lines.append(
+            f'{job["cron_expr"]} {build_schedule_command(job["command"])}'
+        )
+    lines.append(CRON_BLOCK_END)
     return "\n".join(lines) + "\n"
 
 
@@ -249,7 +280,7 @@ def install_crontab_schedule(dry_run: bool = False) -> None:
 
     if dry_run:
         print(new_crontab.rstrip())
-        print("crontab installed at 9:00 AM and 6:00 PM ET")
+        print("crontab installed for autonomous X growth workflows")
         return
 
     install_result = run_system_command(
@@ -260,11 +291,11 @@ def install_crontab_schedule(dry_run: bool = False) -> None:
         details = install_result.stderr.strip() or "crontab installation failed"
         exit_error(details)
 
-    print("crontab installed at 9:00 AM and 6:00 PM ET")
+    print("crontab installed for autonomous X growth workflows")
 
 
-def build_systemd_service_text() -> str:
-    """Build the systemd service definition for scheduled posting."""
+def build_systemd_service_text(command: str) -> str:
+    """Build the systemd service definition for an autonomous job."""
     path_value = shlex.quote(f"{BIN_DIR}:/usr/local/bin:/usr/bin:/bin")
     queue_value = shlex.quote(QUEUE_FILE)
     keys_value = shlex.quote(KEYS_FILE)
@@ -272,10 +303,10 @@ def build_systemd_service_text() -> str:
         "/bin/sh -lc "
         f"'PATH={path_value}; export PATH "
         f"X_QUEUE_FILE={queue_value} "
-        f"X_KEYS_FILE={keys_value}; exec xqueue next'"
+        f"X_KEYS_FILE={keys_value}; exec {command}'"
     )
     return f"""[Unit]
-Description=Obsidian Growth Kit scheduled posting
+Description=Obsidian Growth Kit autonomous workflow
 
 [Service]
 Type=oneshot
@@ -283,16 +314,16 @@ ExecStart={exec_start}
 """
 
 
-def build_systemd_timer_text() -> str:
-    """Build the systemd timer definition for scheduled posting."""
+def build_systemd_timer_text(job_name: str, on_calendar: str) -> str:
+    """Build the systemd timer definition for an autonomous job."""
+    unit_name = f"{SCHEDULER_PREFIX}-{job_name}.service"
     return f"""[Unit]
-Description=Obsidian Growth Kit scheduled posting timer
+Description=Obsidian Growth Kit autonomous workflow timer
 
 [Timer]
-OnCalendar=*-*-* 09:00:00 America/New_York
-OnCalendar=*-*-* 18:00:00 America/New_York
+OnCalendar={on_calendar}
 Persistent=true
-Unit={SCHEDULER_NAME}.service
+Unit={unit_name}
 
 [Install]
 WantedBy=timers.target
@@ -328,8 +359,20 @@ def install_systemd_timer(dry_run: bool = False) -> bool:
         return False
 
     ensure_directory(SYSTEMD_USER_DIR, dry_run=dry_run)
-    write_text_file(SERVICE_FILE, build_systemd_service_text(), dry_run=dry_run)
-    write_text_file(TIMER_FILE, build_systemd_timer_text(), dry_run=dry_run)
+    for job in build_job_specs():
+        job_name = f'{SCHEDULER_PREFIX}-{job["name"]}'
+        service_file = os.path.join(SYSTEMD_USER_DIR, f"{job_name}.service")
+        timer_file = os.path.join(SYSTEMD_USER_DIR, f"{job_name}.timer")
+        write_text_file(
+            service_file,
+            build_systemd_service_text(job["command"]),
+            dry_run=dry_run,
+        )
+        write_text_file(
+            timer_file,
+            build_systemd_timer_text(job["name"], job["on_calendar"]),
+            dry_run=dry_run,
+        )
 
     daemon_reload = run_system_command(
         ["systemctl", "--user", "daemon-reload"],
@@ -338,20 +381,27 @@ def install_systemd_timer(dry_run: bool = False) -> bool:
     if daemon_reload.returncode != 0:
         return False
 
-    enable_result = run_system_command(
-        ["systemctl", "--user", "enable", "--now", f"{SCHEDULER_NAME}.timer"],
-        dry_run=dry_run,
-    )
-    if enable_result.returncode != 0:
-        return False
+    for job in build_job_specs():
+        enable_result = run_system_command(
+            [
+                "systemctl",
+                "--user",
+                "enable",
+                "--now",
+                f'{SCHEDULER_PREFIX}-{job["name"]}.timer',
+            ],
+            dry_run=dry_run,
+        )
+        if enable_result.returncode != 0:
+            return False
 
     enable_systemd_linger(dry_run=dry_run)
-    print("systemd timer installed at 9:00 AM and 6:00 PM ET")
+    print("systemd timers installed for autonomous X growth workflows")
     return True
 
 
 def install_schedule(command_args: list[str], dry_run: bool = False) -> None:
-    """Install a persistent posting schedule using systemd or crontab."""
+    """Install persistent autonomous workflows using systemd or crontab."""
     options = parse_install_schedule_args(command_args)
     scheduler = options["scheduler"]
 
