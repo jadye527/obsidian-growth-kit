@@ -16,3 +16,10 @@
 ## Next Focus
 - Keep memory notes aligned with the latest shipped automation and growth-tracking changes.
 - Preserve minimal, test-backed updates without touching protected project files.
+
+## Ralph's Session Log
+### 2026-03-12
+- Read the current daily log and Ralph memory notes before making changes.
+- Confirmed the supervisor proof target at `~/.openclaw/workspace-obsidian/memory/ralph.md` is not writable in this sandbox.
+- Implemented the `xmemory` CLI for Ralph session-log updates.
+- Added pytest coverage for Ralph session-log creation and replacement behavior.
