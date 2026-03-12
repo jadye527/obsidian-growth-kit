@@ -2,14 +2,23 @@
 """xmeme — Generate a fresh meme image for posting."""
 from __future__ import annotations
 
+import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 from uuid import uuid4
 
 DEFAULT_MEMEGEN_PATH = os.environ.get("X_MEMEGEN_PATH")
 DEFAULT_MEMEGEN_PYTHON = os.environ.get("X_MEMEGEN_PYTHON", sys.executable)
+DEFAULT_TEMPLATE_COUNT = 8
+DEFAULT_TEMPLATE_OUTPUT_DIR = "out/templates"
+IMGFLIP_API_URL = "https://api.imgflip.com/get_memes?type=image"
+HTTP_HEADERS = {"User-Agent": "obsidian-growth-kit/xmeme"}
 
 HELP_TEXT = """xmeme — Fresh meme generator
 
@@ -17,10 +26,12 @@ Usage:
   xmeme generate --template <name> --top-text <text>
                  [--bottom-text <text>] --output-dir <dir>
                  [--prefix <name>] [--generator <path>] [--python <path>]
+  xmeme download-templates [--output-dir <dir>] [--count <number>]
   xmeme --help
 
 Commands:
   generate                  Create a new meme image with a unique filename
+  download-templates        Download popular meme templates to a directory
 
 Options:
   --template <name>         Template filename to pass to memegen.py
@@ -30,6 +41,7 @@ Options:
   --prefix <name>           Filename prefix for the generated image
   --generator <path>        Path to memegen.py (defaults to X_MEMEGEN_PATH)
   --python <path>           Python executable for the generator
+  --count <number>          Number of templates to download (default: 8)
 
 Examples:
   xmeme generate --template drake.jpg --top-text "Ship now"
@@ -37,6 +49,8 @@ Examples:
                  --output-dir ~/workspace-obsidian/out
   xmeme generate --template fire.jpg --top-text "Launch day"
                  --output-dir ~/workspace-obsidian/out --prefix release
+  xmeme download-templates --output-dir ~/workspace-obsidian/out/templates
+  xmeme download-templates --count 10
 """
 
 
@@ -96,6 +110,36 @@ def parse_generate_args(args: list[str]) -> dict[str, str]:
     return options
 
 
+def parse_download_args(args: list[str]) -> dict[str, int | str]:
+    """Parse and validate download-templates command arguments."""
+    options: dict[str, int | str] = {
+        "count": DEFAULT_TEMPLATE_COUNT,
+        "output_dir": DEFAULT_TEMPLATE_OUTPUT_DIR,
+    }
+    index = 0
+
+    while index < len(args):
+        token = args[index]
+        if token == "--output-dir":
+            if index + 1 >= len(args):
+                exit_error(f"Missing value for {token}")
+            options["output_dir"] = args[index + 1]
+            index += 2
+            continue
+        if token == "--count":
+            if index + 1 >= len(args):
+                exit_error(f"Missing value for {token}")
+            count_text = args[index + 1]
+            if not count_text.isdigit() or int(count_text) <= 0:
+                exit_error("--count must be a positive integer")
+            options["count"] = int(count_text)
+            index += 2
+            continue
+        exit_error(f"Unknown option: {token}")
+
+    return options
+
+
 def build_output_path(output_dir: str, prefix: str) -> str:
     """Return a unique output path for a generated meme image."""
     expanded_dir = os.path.expanduser(output_dir)
@@ -103,6 +147,67 @@ def build_output_path(output_dir: str, prefix: str) -> str:
     unique_suffix = uuid4().hex[:8]
     filename = f"{prefix}_{timestamp}_{unique_suffix}.png"
     return os.path.join(expanded_dir, filename)
+
+
+def slugify_template_name(name: str) -> str:
+    """Convert a template name into a stable filename prefix."""
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    return slug or "template"
+
+
+def template_filename(template: dict[str, str]) -> str:
+    """Build a local filename for a remote template image."""
+    parsed = urlparse(template["url"])
+    suffix = Path(parsed.path).suffix.lower()
+    if suffix not in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+        suffix = ".jpg"
+    return f"{slugify_template_name(template['name'])}{suffix}"
+
+
+def fetch_popular_templates(count: int) -> list[dict[str, str]]:
+    """Fetch a list of popular meme templates from Imgflip."""
+    request = Request(IMGFLIP_API_URL, headers=HTTP_HEADERS)
+    with urlopen(request, timeout=30) as response:
+        payload = json.load(response)
+
+    memes = payload.get("data", {}).get("memes", [])
+    if not payload.get("success") or not memes:
+        exit_error("template download failed: Imgflip did not return templates")
+
+    return [
+        {"name": meme["name"], "url": meme["url"]}
+        for meme in memes[:count]
+        if meme.get("name") and meme.get("url")
+    ]
+
+
+def download_template(template: dict[str, str], output_dir: str) -> str:
+    """Download one meme template image and return the saved path."""
+    request = Request(template["url"], headers=HTTP_HEADERS)
+    destination = Path(os.path.expanduser(output_dir)) / template_filename(template)
+    with urlopen(request, timeout=30) as response:
+        destination.write_bytes(response.read())
+    return str(destination)
+
+
+def download_templates(options: dict[str, int | str]) -> list[str]:
+    """Download popular meme templates into the requested output directory."""
+    output_dir = os.path.expanduser(str(options["output_dir"]))
+    count = int(options["count"])
+    os.makedirs(output_dir, exist_ok=True)
+
+    try:
+        templates = fetch_popular_templates(count)
+        saved_paths = [
+            download_template(template, output_dir) for template in templates
+        ]
+    except OSError as exc:
+        exit_error(f"template download failed: {exc}")
+
+    for path in saved_paths:
+        print(path)
+
+    return saved_paths
 
 
 def generate_meme(options: dict[str, str]) -> str:
@@ -144,11 +249,21 @@ def main() -> None:
         return
 
     command = args[0]
-    if command != "generate":
-        exit_error(f"Unknown command: {command}")
+    if len(args) > 1 and args[1] in {"-h", "--help"}:
+        print_help()
+        return
 
-    options = parse_generate_args(args[1:])
-    generate_meme(options)
+    if command == "generate":
+        options = parse_generate_args(args[1:])
+        generate_meme(options)
+        return
+
+    if command == "download-templates":
+        options = parse_download_args(args[1:])
+        download_templates(options)
+        return
+
+    exit_error(f"Unknown command: {command}")
 
 
 if __name__ == "__main__":
