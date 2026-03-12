@@ -9,6 +9,9 @@ from datetime import datetime, timezone
 DATA_DIR = os.path.expanduser("~/.config/x-api")
 GROWTH_FILE = os.path.join(DATA_DIR, "growth-tracker.json")
 STRATEGY_FILE = os.path.join(DATA_DIR, "strategy-log.json")
+MEMORY_DIR = os.path.expanduser(
+    os.environ.get("OPENCLAW_MEMORY_DIR", "~/.openclaw/workspace-obsidian/memory")
+)
 
 HELP_TEXT = """xgrowth — X Growth Engine
 
@@ -56,6 +59,24 @@ def load_json(path, default=None):
         with open(path) as f:
             return json.load(f)
     return default or {}
+
+
+def load_memory_files(memory_dir=MEMORY_DIR):
+    """Read all markdown memory files from the shared OpenClaw memory directory."""
+    if not os.path.isdir(memory_dir):
+        return []
+
+    memories = []
+    for name in sorted(os.listdir(memory_dir)):
+        if not name.endswith(".md"):
+            continue
+        path = os.path.join(memory_dir, name)
+        if not os.path.isfile(path):
+            continue
+        with open(path) as handle:
+            memories.append({"name": name, "path": path, "content": handle.read()})
+    return memories
+
 
 def save_json(path, data):
     """Write JSON data to disk, creating parent directories as needed."""
@@ -289,6 +310,35 @@ def show_leaderboard():
         if followers:
             print(f"  {followers}")
 
+
+def show_new_strategy():
+    """Show strategy ideas informed by shared memory files."""
+    memories = load_memory_files()
+
+    print("🧪 TODAY'S NEW STRATEGY PROPOSAL")
+    print("=" * 50)
+    print()
+    if memories:
+        print(f"Loaded {len(memories)} memory files from {MEMORY_DIR}.")
+        print("Memory sources:")
+        for memory in memories:
+            print(f"  - {memory['name']}")
+    else:
+        print(f"No memory files found in {MEMORY_DIR}.")
+    print()
+    print("Run 'xgrowth track' first to see what's working,")
+    print("then 'xgrowth log-strategy \"name\" \"description\"' to log it.")
+    print()
+    print("Strategy ideas based on current data and memory:")
+    print("  1. Double down on self-deprecating build-in-public humor")
+    print("  2. Turn real agent failures into meme + follow-up thread pairs")
+    print("  3. End every post with a question or hot take for replies")
+    print("  4. Keep posting around 9:03 AM and 5:57 PM ET")
+    print("  5. Pair technical insights with a human or funny angle")
+    print("  6. Reply quickly to engaged followers after each scheduled post")
+    print("  7. Share concrete trading or prediction-market updates with numbers")
+    print("  8. Study leaderboard accounts for hook and framing patterns")
+
 def main():
     """Run the xgrowth command-line interface."""
     args = sys.argv[1:]
@@ -310,21 +360,7 @@ def main():
     elif cmd == "leaderboard":
         show_leaderboard()
     elif cmd == "new-strategy":
-        print("🧪 TODAY'S NEW STRATEGY PROPOSAL")
-        print("=" * 50)
-        print()
-        print("Run 'xgrowth track' first to see what's working,")
-        print("then 'xgrowth log-strategy \"name\" \"description\"' to log it.")
-        print()
-        print("Strategy ideas based on current data:")
-        print("  1. Thread hooks — start threads with a bold claim + promise")
-        print("  2. Data screenshots — visual content gets 2-3x engagement")
-        print("  3. Quote-tweet viral content with our angle")
-        print("  4. Post at peak hours only (8-10am, 12-1pm, 5-7pm ET)")
-        print("  5. End every post with a question to drive replies")
-        print("  6. Tag relevant accounts in value posts (not spam)")
-        print("  7. Create a recurring series (Daily Alpha, Weekly P&L)")
-        print("  8. Engage in 5+ conversations daily on others' posts")
+        show_new_strategy()
     else:
         exit_error(f"Unknown command: {cmd}")
 

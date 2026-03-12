@@ -125,3 +125,50 @@ def test_log_strategy_appends_new_strategy_with_metrics(
         "metrics_after": "",
         "result": "",
     }
+
+
+def test_load_memory_files_reads_all_markdown_files(tmp_path, load_tool_module):
+    module = load_tool_module("xgrowth")
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    (memory_dir / "b-note.md").write_text("# B\n", encoding="utf-8")
+    (memory_dir / "a-note.md").write_text("# A\n", encoding="utf-8")
+    (memory_dir / "ignore.txt").write_text("skip", encoding="utf-8")
+
+    memories = module.load_memory_files(str(memory_dir))
+
+    assert [memory["name"] for memory in memories] == ["a-note.md", "b-note.md"]
+    assert [memory["content"] for memory in memories] == ["# A\n", "# B\n"]
+
+
+def test_load_memory_files_returns_empty_list_for_missing_directory(load_tool_module):
+    module = load_tool_module("xgrowth")
+
+    assert module.load_memory_files("/tmp/does-not-exist-xgrowth-memory") == []
+
+
+def test_new_strategy_reads_and_prints_memory_files(
+    monkeypatch, capsys, load_tool_module
+):
+    module = load_tool_module("xgrowth")
+    memories = [
+        {"name": "agents.md", "path": "/tmp/agents.md", "content": "# Agents\n"},
+        {
+            "name": "build-in-public.md",
+            "path": "/tmp/build-in-public.md",
+            "content": "# Build\n",
+        },
+    ]
+
+    monkeypatch.setattr(module, "MEMORY_DIR", "/tmp/shared-memory")
+    monkeypatch.setattr(module, "load_memory_files", lambda: memories)
+    monkeypatch.setattr(sys, "argv", ["xgrowth", "new-strategy"])
+
+    module.main()
+
+    captured = capsys.readouterr()
+    assert "Loaded 2 memory files from /tmp/shared-memory." in captured.out
+    assert "  - agents.md" in captured.out
+    assert "  - build-in-public.md" in captured.out
+    assert "self-deprecating build-in-public humor" in captured.out
+    assert captured.err == ""
