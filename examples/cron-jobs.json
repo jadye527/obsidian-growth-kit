@@ -15,7 +15,7 @@
       "wakeMode": "next-heartbeat",
       "payload": {
         "kind": "agentTurn",
-        "message": "Morning X Growth Routine:\n1. Run xanalytics snapshot\n2. Run xanalytics compare\n3. Queue 4-5 new posts for today\n4. Implement ONE new growth improvement\n5. Start drip loop if not running\n6. Log what you did to daily notes",
+        "message": "xcron morning-growth",
         "thinking": "low"
       }
     },
@@ -33,7 +33,7 @@
       "wakeMode": "next-heartbeat",
       "payload": {
         "kind": "agentTurn",
-        "message": "Run xscout report. Like tweets with 50+ likes. For tweets with 20+ likes, craft a post referencing the same topic. If queue below 3, add new posts.",
+        "message": "xcron content-scout",
         "thinking": "low"
       }
     },
@@ -51,7 +51,7 @@
       "wakeMode": "next-heartbeat",
       "payload": {
         "kind": "agentTurn",
-        "message": "Nightly review:\n1. Run xgrowth report\n2. Run xanalytics compare\n3. Identify best/worst post types\n4. Log strategy results\n5. Queue 2-3 posts for tomorrow morning\n6. Propose one new tactic for tomorrow",
+        "message": "xcron nightly-review",
         "thinking": "low"
       }
     },
@@ -69,7 +69,7 @@
       "wakeMode": "next-heartbeat",
       "payload": {
         "kind": "agentTurn",
-        "message": "Run xanalytics snapshot. Report the numbers.",
+        "message": "xcron analytics-snapshot",
         "thinking": "low"
       }
     }

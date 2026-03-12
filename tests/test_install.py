@@ -45,6 +45,7 @@ def test_install_uses_home_for_config_and_bin_dirs(repo_root, install_env):
     assert (fake_home / ".config" / "x-api" / "keys.env").is_file()
     assert (fake_home / ".local" / "bin" / "xpost").is_file()
     assert (fake_home / ".local" / "bin" / "xqueue").is_file()
+    assert (fake_home / ".local" / "bin" / "xcron").is_file()
     assert (fake_home / ".local" / "bin" / "xmiddleware").is_file()
     assert (fake_home / ".local" / "bin" / "xcleanup").is_file()
     assert not (repo_root / "~").exists()
@@ -93,8 +94,20 @@ def test_install_configures_systemd_timer_when_available(repo_root, install_env)
     )
 
     assert result.returncode == 0, result.stderr
-    service_file = fake_home / ".config" / "systemd" / "user" / "obsidian-growth-kit-post.service"
-    timer_file = fake_home / ".config" / "systemd" / "user" / "obsidian-growth-kit-post.timer"
+    service_file = (
+        fake_home
+        / ".config"
+        / "systemd"
+        / "user"
+        / "obsidian-growth-kit-post.service"
+    )
+    timer_file = (
+        fake_home
+        / ".config"
+        / "systemd"
+        / "user"
+        / "obsidian-growth-kit-post.timer"
+    )
 
     assert service_file.is_file()
     assert timer_file.is_file()
