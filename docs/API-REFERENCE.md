@@ -200,6 +200,7 @@ Usage:
 
 ```bash
 xmiddleware probe --url <url> [--host <host>] [--cookie <cookie>] [--timeout <sec>]
+xmiddleware login --login-url <url> --username <username> --password <password> [--me-url <url>] [--host <host>] [--timeout <sec>]
 xmiddleware --help
 ```
 
@@ -210,9 +211,11 @@ Commands:
 | `xmiddleware probe --url <url>` | Probe a URL and report whether the response suggests host blocking or cookie rejection. |
 | `xmiddleware probe --url <url> --host <host>` | Override the `Host` header to simulate a tunneled hostname against a local server. |
 | `xmiddleware probe --url <url> --cookie <cookie>` | Send a raw `Cookie` header to check whether auth survives middleware. |
+| `xmiddleware login --login-url <url> --username <username> --password <password>` | Verify login end-to-end by capturing the issued session cookie and replaying it against `/api/auth/me`. |
 
 Options and behavior:
 
 - Redirects are not followed so middleware redirects stay visible.
 - The report includes `Location`, `Set-Cookie`, and any `x-middleware-*` headers returned by Next.js.
 - Host blocking is inferred from 4xx responses plus host-related error markers in the body.
+- `login` flags browser-reject conditions such as `SameSite=None` without `Secure`.

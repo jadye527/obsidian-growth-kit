@@ -65,6 +65,7 @@ def test_api_reference_lists_every_command(repo_root):
         "xrecord list",
         "xrecord upload <name>",
         "xrecord svg <name>",
+        "xmiddleware login --login-url <url> --username <username> --password <password>",
     )
 
     for command in commands:

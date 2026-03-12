@@ -3,20 +3,28 @@
 from __future__ import annotations
 
 import sys
+import json
 import urllib.error
 import urllib.request
+from http.client import HTTPMessage
 
 HELP_TEXT = """xmiddleware — Next.js Middleware Probe
 
 Usage:
   xmiddleware probe --url <url> [--host <host>] [--cookie <cookie>] [--timeout <sec>]
+  xmiddleware login --login-url <url> --username <username> --password <password> [--me-url <url>] [--host <host>] [--timeout <sec>]
   xmiddleware --help
 
 Commands:
   probe                   Inspect a response for host blocking or cookie rejection
+  login                   Verify login end-to-end by replaying the issued session cookie
 
 Options:
   --url <url>             Full URL to request
+  --login-url <url>       Login endpoint to POST to
+  --me-url <url>          Authenticated endpoint to call after login (default: derive /api/auth/me)
+  --username <username>   Username for login verification
+  --password <password>   Password for login verification
   --host <host>           Override the Host header to simulate a tunneled hostname
   --cookie <cookie>       Raw Cookie header value to send with the request
   --timeout <sec>         Request timeout in seconds (default: 10)
@@ -27,6 +35,8 @@ Examples:
     --host example.trycloudflare.com
   xmiddleware probe --url https://example.trycloudflare.com/api/auth/me \\
     --cookie "session=abc123"
+  xmiddleware login --login-url https://example.trycloudflare.com/api/auth/login \\
+    --username admin --password secret
 """
 
 HOST_BLOCK_MARKERS = (
@@ -104,23 +114,125 @@ def parse_probe_args(args: list[str]) -> dict[str, object]:
     return options
 
 
+def parse_login_args(args: list[str]) -> dict[str, object]:
+    """Parse and validate login verification arguments."""
+    options: dict[str, object] = {"host": None, "timeout": 10.0}
+    i = 0
+
+    while i < len(args):
+        token = args[i]
+        if token == "--login-url":
+            if i + 1 >= len(args):
+                exit_error("Missing value for --login-url")
+            options["login_url"] = args[i + 1]
+            i += 2
+            continue
+        if token == "--me-url":
+            if i + 1 >= len(args):
+                exit_error("Missing value for --me-url")
+            options["me_url"] = args[i + 1]
+            i += 2
+            continue
+        if token == "--username":
+            if i + 1 >= len(args):
+                exit_error("Missing value for --username")
+            options["username"] = args[i + 1]
+            i += 2
+            continue
+        if token == "--password":
+            if i + 1 >= len(args):
+                exit_error("Missing value for --password")
+            options["password"] = args[i + 1]
+            i += 2
+            continue
+        if token == "--host":
+            if i + 1 >= len(args):
+                exit_error("Missing value for --host")
+            options["host"] = args[i + 1]
+            i += 2
+            continue
+        if token == "--timeout":
+            if i + 1 >= len(args):
+                exit_error("Missing value for --timeout")
+            try:
+                timeout = float(args[i + 1])
+            except ValueError:
+                exit_error("Invalid timeout value")
+            if timeout <= 0:
+                exit_error("Timeout must be greater than 0")
+            options["timeout"] = timeout
+            i += 2
+            continue
+        exit_error(f"Unknown option: {token}")
+
+    required = ("login_url", "username", "password")
+    missing = [name for name in required if name not in options]
+    if missing:
+        exit_error(
+            "Usage: xmiddleware login --login-url <url> --username <username> "
+            "--password <password> [--me-url <url>] [--host <host>]"
+        )
+
+    if "me_url" not in options:
+        options["me_url"] = derive_me_url(str(options["login_url"]))
+
+    return options
+
+
 def fetch_response(request: urllib.request.Request, timeout: float):
     """Fetch a single response without following redirects."""
     opener = urllib.request.build_opener(NoRedirectHandler)
     return opener.open(request, timeout=timeout)
 
 
-def probe(
-    url: str, host: str | None = None, cookie: str | None = None, timeout: float = 10.0
+def response_headers(response) -> HTTPMessage:
+    """Return the response headers object."""
+    return response.headers
+
+
+def build_result(
+    response,
+    *,
+    url: str,
+    host: str | None,
+    cookie_sent: bool,
+    body: str,
 ) -> dict[str, object]:
-    """Send a single GET request and capture status, headers, and body."""
+    """Normalize an HTTP response into a serializable result payload."""
+    headers = response_headers(response)
+    return {
+        "url": url,
+        "status": response.getcode(),
+        "headers": dict(headers.items()),
+        "set_cookie_headers": headers.get_all("Set-Cookie") or [],
+        "body": body,
+        "host": host,
+        "cookie_sent": cookie_sent,
+    }
+
+
+def perform_request(
+    url: str,
+    *,
+    method: str,
+    host: str | None = None,
+    cookie: str | None = None,
+    timeout: float = 10.0,
+    json_body: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Send a single HTTP request without following redirects."""
     headers = {"User-Agent": "xmiddleware/0.1"}
+    payload = None
+
     if host:
         headers["Host"] = host
     if cookie:
         headers["Cookie"] = cookie
+    if json_body is not None:
+        headers["Content-Type"] = "application/json"
+        payload = json.dumps(json_body).encode("utf-8")
 
-    request = urllib.request.Request(url, headers=headers, method="GET")
+    request = urllib.request.Request(url, headers=headers, data=payload, method=method)
     response = None
 
     try:
@@ -131,13 +243,119 @@ def probe(
         exit_error(f"Network error: {exc.reason}")
 
     body = response.read().decode("utf-8", errors="replace")
+    return build_result(
+        response,
+        url=url,
+        host=host,
+        cookie_sent=bool(cookie),
+        body=body,
+    )
+
+
+def probe(
+    url: str, host: str | None = None, cookie: str | None = None, timeout: float = 10.0
+) -> dict[str, object]:
+    """Send a single GET request and capture status, headers, and body."""
+    return perform_request(url, method="GET", host=host, cookie=cookie, timeout=timeout)
+
+
+def derive_me_url(login_url: str) -> str:
+    """Infer the auth-check endpoint from the login endpoint."""
+    if login_url.endswith("/api/auth/login"):
+        return f"{login_url[:-5]}me"
+    exit_error("Missing --me-url and could not derive it from --login-url")
+
+
+def extract_cookie_header(set_cookie_headers: list[str]) -> str | None:
+    """Return the first cookie name=value pair from Set-Cookie headers."""
+    for header in set_cookie_headers:
+        cookie_pair = header.split(";", 1)[0].strip()
+        if cookie_pair:
+            return cookie_pair
+    return None
+
+
+def analyze_set_cookie(set_cookie_headers: list[str]) -> dict[str, object]:
+    """Inspect Set-Cookie attributes for browser-reject conditions."""
+    if not set_cookie_headers:
+        return {
+            "cookie_header": "",
+            "cookie_present": False,
+            "browser_reject_reason": "Login response did not include Set-Cookie.",
+        }
+
+    header = set_cookie_headers[0]
+    attributes = {
+        part.strip().lower() for part in header.split(";")[1:] if part.strip()
+    }
+    has_secure = "secure" in attributes
+    same_site = ""
+    for attr in attributes:
+        if attr.startswith("samesite="):
+            same_site = attr.split("=", 1)[1]
+            break
+
+    browser_reject_reason = ""
+    if same_site == "none" and not has_secure:
+        browser_reject_reason = "SameSite=None without Secure will be dropped by browsers."
+
     return {
-        "url": url,
-        "status": response.getcode(),
-        "headers": dict(response.headers.items()),
-        "body": body,
-        "host": host,
-        "cookie_sent": bool(cookie),
+        "cookie_header": header,
+        "cookie_present": True,
+        "browser_reject_reason": browser_reject_reason,
+    }
+
+
+def verify_login(
+    login_url: str,
+    username: str,
+    password: str,
+    *,
+    me_url: str,
+    host: str | None = None,
+    timeout: float = 10.0,
+) -> dict[str, object]:
+    """POST login credentials and verify the returned session on a second request."""
+    login_result = perform_request(
+        login_url,
+        method="POST",
+        host=host,
+        timeout=timeout,
+        json_body={"username": username, "password": password},
+    )
+    cookie_analysis = analyze_set_cookie(list(login_result["set_cookie_headers"]))
+    cookie_header = extract_cookie_header(list(login_result["set_cookie_headers"]))
+    me_result = perform_request(
+        me_url,
+        method="GET",
+        host=host,
+        cookie=cookie_header,
+        timeout=timeout,
+    )
+
+    me_analysis = analyze_probe(me_result)
+    login_ok = int(login_result["status"]) == 200
+    session_verified = login_ok and bool(cookie_header) and int(me_result["status"]) == 200
+
+    conclusion = "Login works end-to-end through the tunnel."
+    if not login_ok:
+        conclusion = "Login request failed before a session could be established."
+    elif not cookie_header:
+        conclusion = "Login succeeded but did not issue a session cookie."
+    elif str(cookie_analysis["browser_reject_reason"]):
+        conclusion = str(cookie_analysis["browser_reject_reason"])
+    elif int(me_result["status"]) != 200:
+        conclusion = me_analysis["conclusion"]
+
+    return {
+        "login_result": login_result,
+        "me_result": me_result,
+        "me_analysis": me_analysis,
+        "cookie_analysis": cookie_analysis,
+        "session_cookie": cookie_header,
+        "login_ok": login_ok,
+        "session_verified": session_verified,
+        "conclusion": conclusion,
     }
 
 
@@ -212,6 +430,36 @@ def format_report(result: dict[str, object], analysis: dict[str, object]) -> str
     return "\n".join(lines)
 
 
+def format_login_report(verification: dict[str, object]) -> str:
+    """Render a concise report for the login verification flow."""
+    login_result = dict(verification["login_result"])
+    me_result = dict(verification["me_result"])
+    cookie_analysis = dict(verification["cookie_analysis"])
+    me_analysis = dict(verification["me_analysis"])
+
+    lines = [
+        f"Login URL: {login_result['url']}",
+        f"Login status: {login_result['status']}",
+        f"Session cookie issued: {'yes' if verification['session_cookie'] else 'no'}",
+        f"Cookie check URL: {me_result['url']}",
+        f"Cookie check status: {me_result['status']}",
+        f"Session verified: {'yes' if verification['session_verified'] else 'no'}",
+    ]
+
+    if cookie_analysis["cookie_header"]:
+        lines.append(f"Set-Cookie: {cookie_analysis['cookie_header']}")
+    if cookie_analysis["browser_reject_reason"]:
+        lines.append(f"Browser reject risk: {cookie_analysis['browser_reject_reason']}")
+    if me_analysis["location"]:
+        lines.append(f"Location: {me_analysis['location']}")
+    if me_analysis["middleware_headers"]:
+        for key, value in dict(me_analysis["middleware_headers"]).items():
+            lines.append(f"{key}: {value}")
+
+    lines.append(f"Conclusion: {verification['conclusion']}")
+    return "\n".join(lines)
+
+
 def main() -> None:
     """Run the CLI entrypoint."""
     args = sys.argv[1:]
@@ -220,18 +468,32 @@ def main() -> None:
         return
 
     command = args[0]
-    if command != "probe":
-        exit_error(f"Unknown command: {command}")
+    if command == "probe":
+        options = parse_probe_args(args[1:])
+        result = probe(
+            str(options["url"]),
+            host=options["host"],
+            cookie=options["cookie"],
+            timeout=float(options["timeout"]),
+        )
+        analysis = analyze_probe(result)
+        print(format_report(result, analysis))
+        return
 
-    options = parse_probe_args(args[1:])
-    result = probe(
-        str(options["url"]),
-        host=options["host"],
-        cookie=options["cookie"],
-        timeout=float(options["timeout"]),
-    )
-    analysis = analyze_probe(result)
-    print(format_report(result, analysis))
+    if command == "login":
+        options = parse_login_args(args[1:])
+        verification = verify_login(
+            str(options["login_url"]),
+            str(options["username"]),
+            str(options["password"]),
+            me_url=str(options["me_url"]),
+            host=options["host"],
+            timeout=float(options["timeout"]),
+        )
+        print(format_login_report(verification))
+        return
+
+    exit_error(f"Unknown command: {command}")
 
 
 if __name__ == "__main__":
