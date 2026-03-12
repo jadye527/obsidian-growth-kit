@@ -2,6 +2,24 @@
   "description": "Copy these jobs into your ~/.openclaw/cron/jobs.json to automate X growth",
   "jobs": [
     {
+      "id": "x-autonomous-post",
+      "name": "x-autonomous-post",
+      "description": "Twice-daily autonomous posting: generate a meme, publish, self-reply, and handle mentions",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9,18 * * *",
+        "tz": "America/New_York"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "next-heartbeat",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "xcron autonomous-post",
+        "thinking": "low"
+      }
+    },
+    {
       "id": "x-morning-growth",
       "name": "x-morning-growth",
       "description": "Morning X growth: post content, engage with niche accounts, implement one new growth tactic",

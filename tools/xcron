@@ -43,6 +43,7 @@ Usage:
 
 Commands:
   install-schedule     Install persistent autonomous workflow schedules
+  autonomous-post      Run the scheduled meme-posting pipeline
   morning-growth       Run the daily morning growth pipeline
   content-scout        Run the midday scouting and engagement pipeline
   nightly-review       Run the nightly review and queue refresh pipeline
@@ -56,6 +57,11 @@ Options:
 Examples:
   xcron install-schedule
   xcron install-schedule --scheduler crontab --dry-run
+  X_AUTONOMOUS_POST_TEMPLATE=drake.jpg X_AUTONOMOUS_POST_TOP_TEXT="Ship it"
+  X_AUTONOMOUS_POST_TEXT_FILE=~/post.md
+  X_AUTONOMOUS_POST_SELF_REPLY_FILE=~/reply.md
+  X_AUTONOMOUS_POST_MENTION_REPLY_FILE=~/mentions.md
+  xcron autonomous-post
   xcron morning-growth
   xcron content-scout
   xcron nightly-review --dry-run
@@ -195,6 +201,12 @@ def write_text_file(path: str, contents: str, dry_run: bool = False) -> None:
 def build_job_specs() -> list[dict[str, str]]:
     """Return the autonomous workflow jobs managed by xcron."""
     return [
+        {
+            "name": "autonomous-post",
+            "cron_expr": "0 9,18 * * *",
+            "on_calendar": "*-*-* 09,18:00:00 America/New_York",
+            "command": "xcron autonomous-post",
+        },
         {
             "name": "morning-growth",
             "cron_expr": "0 8 * * *",
@@ -702,6 +714,92 @@ def run_publish_meme_post(command_args: list[str], dry_run: bool = False) -> Non
         )
 
 
+def get_autonomous_post_env() -> dict[str, object]:
+    """Load publish-meme-post options from environment variables."""
+    options: dict[str, object] = {
+        "template": os.environ.get("X_AUTONOMOUS_POST_TEMPLATE", ""),
+        "top_text": os.environ.get("X_AUTONOMOUS_POST_TOP_TEXT", ""),
+        "bottom_text": os.environ.get("X_AUTONOMOUS_POST_BOTTOM_TEXT", ""),
+        "output_dir": os.environ.get(
+            "X_AUTONOMOUS_POST_OUTPUT_DIR",
+            os.path.join(os.path.expanduser("~"), "obsidian-growth-kit", "out"),
+        ),
+        "text_file": os.environ.get("X_AUTONOMOUS_POST_TEXT_FILE", ""),
+        "self_reply_file": os.environ.get(
+            "X_AUTONOMOUS_POST_SELF_REPLY_FILE", ""
+        ),
+        "mention_reply_file": os.environ.get(
+            "X_AUTONOMOUS_POST_MENTION_REPLY_FILE", ""
+        ),
+        "mentions_limit": os.environ.get(
+            "X_AUTONOMOUS_POST_MENTIONS_LIMIT", "10"
+        ),
+    }
+
+    mentions_limit_text = str(options["mentions_limit"])
+    if not mentions_limit_text.isdigit() or int(mentions_limit_text) <= 0:
+        exit_error(
+            "X_AUTONOMOUS_POST_MENTIONS_LIMIT must be a positive integer"
+        )
+
+    required = [
+        "template",
+        "top_text",
+        "text_file",
+        "self_reply_file",
+        "mention_reply_file",
+    ]
+    missing = [name for name in required if not options[name]]
+    if missing:
+        env_names = ", ".join(
+            [
+                "X_AUTONOMOUS_POST_TEMPLATE",
+                "X_AUTONOMOUS_POST_TOP_TEXT",
+                "X_AUTONOMOUS_POST_TEXT_FILE",
+                "X_AUTONOMOUS_POST_SELF_REPLY_FILE",
+                "X_AUTONOMOUS_POST_MENTION_REPLY_FILE",
+            ]
+        )
+        exit_error(
+            "autonomous-post requires configured environment variables: "
+            f"{env_names}"
+        )
+
+    return options
+
+
+def build_publish_args_from_options(options: dict[str, object]) -> list[str]:
+    """Convert publish options into publish-meme-post CLI args."""
+    command_args = [
+        "--template",
+        str(options["template"]),
+        "--top-text",
+        str(options["top_text"]),
+        "--output-dir",
+        str(options["output_dir"]),
+        "--text-file",
+        str(options["text_file"]),
+        "--self-reply-file",
+        str(options["self_reply_file"]),
+        "--mention-reply-file",
+        str(options["mention_reply_file"]),
+        "--mentions-limit",
+        str(options["mentions_limit"]),
+    ]
+    if options.get("bottom_text"):
+        command_args.extend(["--bottom-text", str(options["bottom_text"])])
+    return command_args
+
+
+def run_autonomous_post(dry_run: bool = False) -> None:
+    """Run the scheduled posting pipeline from environment-backed settings."""
+    options = get_autonomous_post_env()
+    run_publish_meme_post(
+        build_publish_args_from_options(options),
+        dry_run=dry_run,
+    )
+
+
 def run_morning_growth(dry_run: bool = False) -> None:
     """Run the daily morning growth pipeline."""
     run_command(["xanalytics", "snapshot"], dry_run=dry_run)
@@ -745,6 +843,11 @@ def main() -> None:
 
     if command == "install-schedule":
         install_schedule(command_args, dry_run=dry_run)
+        return
+    if command == "autonomous-post":
+        if command_args:
+            exit_error("Usage: xcron autonomous-post [--dry-run]")
+        run_autonomous_post(dry_run=dry_run)
         return
     if command == "morning-growth":
         if command_args:

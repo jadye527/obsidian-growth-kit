@@ -25,6 +25,7 @@ def test_openclaw_cron_jobs_invoke_autonomous_scripts(repo_root):
     messages = {job["id"]: job["payload"]["message"] for job in jobs}
 
     assert messages == {
+        "x-autonomous-post": "xcron autonomous-post",
         "x-morning-growth": "xcron morning-growth",
         "x-content-scout": "xcron content-scout",
         "x-nightly-review": "xcron nightly-review",

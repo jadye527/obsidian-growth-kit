@@ -69,6 +69,71 @@ def test_main_allows_subcommand_options(monkeypatch, load_tool_module):
     assert install_calls == [(["--scheduler", "crontab"], True)]
 
 
+def test_autonomous_post_loads_env_and_runs_publish_pipeline(
+    monkeypatch, load_tool_module
+):
+    module = load_tool_module("xcron")
+    publish_calls = []
+
+    monkeypatch.setenv("X_AUTONOMOUS_POST_TEMPLATE", "drake.jpg")
+    monkeypatch.setenv("X_AUTONOMOUS_POST_TOP_TEXT", "Ship it")
+    monkeypatch.setenv("X_AUTONOMOUS_POST_BOTTOM_TEXT", "Polish later")
+    monkeypatch.setenv("X_AUTONOMOUS_POST_OUTPUT_DIR", "~/ogk-out")
+    monkeypatch.setenv("X_AUTONOMOUS_POST_TEXT_FILE", "~/post.md")
+    monkeypatch.setenv("X_AUTONOMOUS_POST_SELF_REPLY_FILE", "~/reply.md")
+    monkeypatch.setenv("X_AUTONOMOUS_POST_MENTION_REPLY_FILE", "~/mentions.md")
+    monkeypatch.setenv("X_AUTONOMOUS_POST_MENTIONS_LIMIT", "3")
+    monkeypatch.setattr(
+        module,
+        "run_publish_meme_post",
+        lambda args, dry_run=False: publish_calls.append((args, dry_run)),
+    )
+
+    module.run_autonomous_post()
+
+    assert publish_calls == [
+        (
+            [
+                "--template",
+                "drake.jpg",
+                "--top-text",
+                "Ship it",
+                "--output-dir",
+                "~/ogk-out",
+                "--text-file",
+                "~/post.md",
+                "--self-reply-file",
+                "~/reply.md",
+                "--mention-reply-file",
+                "~/mentions.md",
+                "--mentions-limit",
+                "3",
+                "--bottom-text",
+                "Polish later",
+            ],
+            False,
+        )
+    ]
+
+
+def test_autonomous_post_requires_publish_env(monkeypatch, load_tool_module):
+    module = load_tool_module("xcron")
+
+    for key in [
+        "X_AUTONOMOUS_POST_TEMPLATE",
+        "X_AUTONOMOUS_POST_TOP_TEXT",
+        "X_AUTONOMOUS_POST_TEXT_FILE",
+        "X_AUTONOMOUS_POST_SELF_REPLY_FILE",
+        "X_AUTONOMOUS_POST_MENTION_REPLY_FILE",
+    ]:
+        monkeypatch.delenv(key, raising=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.run_autonomous_post()
+
+    assert exc_info.value.code == 1
+
+
 def test_queue_reactive_posts_adds_posts_until_target(
     monkeypatch, load_tool_module
 ):
@@ -312,6 +377,8 @@ def test_build_crontab_text_replaces_existing_managed_block(
 
     assert updated.count(module.CRON_BLOCK_START) == 1
     assert "MAILTO=alerts@example.com" in updated
+    assert "0 9,18 * * * PATH=/tmp/bin:/usr/local/bin:/usr/bin:/bin" in updated
+    assert "xcron autonomous-post >/dev/null 2>&1" in updated
     assert "0 8 * * * PATH=/tmp/bin:/usr/local/bin:/usr/bin:/bin" in updated
     assert "xcron morning-growth >/dev/null 2>&1" in updated
     assert "23 9,12,15,18 * * * PATH=/tmp/bin:/usr/local/bin:/usr/bin:/bin" in updated
@@ -363,6 +430,13 @@ def test_install_schedule_prefers_systemd_and_enables_linger(
             "--user",
             "enable",
             "--now",
+            "obsidian-growth-kit-autonomous-post.timer",
+        ],
+        [
+            "systemctl",
+            "--user",
+            "enable",
+            "--now",
             "obsidian-growth-kit-morning-growth.timer",
         ],
         [
@@ -388,6 +462,8 @@ def test_install_schedule_prefers_systemd_and_enables_linger(
         ],
     ]
     assert loginctl_calls == [["loginctl", "enable-linger", "tester"]]
+    assert (systemd_dir / "obsidian-growth-kit-autonomous-post.service").is_file()
+    assert (systemd_dir / "obsidian-growth-kit-autonomous-post.timer").is_file()
     assert (systemd_dir / "obsidian-growth-kit-morning-growth.service").is_file()
     assert (systemd_dir / "obsidian-growth-kit-morning-growth.timer").is_file()
     assert (systemd_dir / "obsidian-growth-kit-content-scout.service").is_file()
@@ -434,6 +510,7 @@ def test_install_schedule_falls_back_to_crontab_when_systemd_fails(
     assert "crontab installed for autonomous X growth workflows" in captured.out
     assert len(crontab_inputs) == 1
     assert "MAILTO=alerts@example.com" in crontab_inputs[0]
+    assert "xcron autonomous-post >/dev/null 2>&1" in crontab_inputs[0]
     assert "xcron morning-growth >/dev/null 2>&1" in crontab_inputs[0]
     assert "xcron content-scout >/dev/null 2>&1" in crontab_inputs[0]
     assert "xcron nightly-review >/dev/null 2>&1" in crontab_inputs[0]
