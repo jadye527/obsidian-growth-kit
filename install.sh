@@ -18,12 +18,6 @@ echo ""
 CONFIG_DIR="${HOME:?}/.config/x-api"
 BIN_DIR="${HOME}/.local/bin"
 SYSTEMD_USER_DIR="${HOME}/.config/systemd/user"
-SCHEDULER_NAME="obsidian-growth-kit-post"
-SERVICE_FILE="${SYSTEMD_USER_DIR}/${SCHEDULER_NAME}.service"
-TIMER_FILE="${SYSTEMD_USER_DIR}/${SCHEDULER_NAME}.timer"
-CRON_BLOCK_START="# BEGIN_OBSIDIAN_GROWTH_KIT_DAILY_POSTING"
-CRON_BLOCK_END="# END_OBSIDIAN_GROWTH_KIT_DAILY_POSTING"
-SYSTEMD_LINGER_USER="${SUDO_USER:-${USER:-$(id -un)}}"
 
 # Check dependencies
 echo -e "${CYAN}Checking dependencies...${RESET}"
@@ -109,96 +103,9 @@ if [ -d "$SCRIPT_DIR/templates" ]; then
   done
 fi
 
-SCHEDULE_COMMAND="PATH=\"$BIN_DIR:/usr/local/bin:/usr/bin:/bin\" X_QUEUE_FILE=\"$CONFIG_DIR/queue.json\" X_KEYS_FILE=\"$KEYS_FILE\" xqueue next >/dev/null 2>&1"
-
-install_systemd_timer() {
-  cat > "$SERVICE_FILE" <<EOF
-[Unit]
-Description=Obsidian Growth Kit scheduled posting
-
-[Service]
-Type=oneshot
-ExecStart=/bin/sh -lc 'PATH="$BIN_DIR:/usr/local/bin:/usr/bin:/bin"; export PATH X_QUEUE_FILE="$CONFIG_DIR/queue.json" X_KEYS_FILE="$KEYS_FILE"; exec xqueue next'
-EOF
-
-  cat > "$TIMER_FILE" <<EOF
-[Unit]
-Description=Obsidian Growth Kit scheduled posting timer
-
-[Timer]
-OnCalendar=*-*-* 09:00:00 America/New_York
-OnCalendar=*-*-* 18:00:00 America/New_York
-Persistent=true
-Unit=${SCHEDULER_NAME}.service
-
-[Install]
-WantedBy=timers.target
-EOF
-
-  systemctl --user daemon-reload
-  systemctl --user enable --now "${SCHEDULER_NAME}.timer"
-}
-
-enable_systemd_linger() {
-  if ! command -v loginctl >/dev/null 2>&1; then
-    echo -e "  ${DIM}loginctl not found. User timer may require login after reboot.${RESET}"
-    return 0
-  fi
-
-  if loginctl enable-linger "$SYSTEMD_LINGER_USER" >/dev/null 2>&1; then
-    echo -e "  ${GREEN}✓${RESET} user lingering enabled for reboot persistence"
-    return 0
-  fi
-
-  echo -e "  ${DIM}Unable to enable lingering for $SYSTEMD_LINGER_USER. Timer may require login after reboot.${RESET}"
-}
-
-install_crontab_schedule() {
-  local current_crontab
-  local filtered_crontab
-  current_crontab="$(mktemp)"
-  filtered_crontab="$(mktemp)"
-
-  if ! crontab -l > "$current_crontab" 2>/dev/null; then
-    : > "$current_crontab"
-  fi
-
-  awk -v start="$CRON_BLOCK_START" -v end="$CRON_BLOCK_END" '
-    $0 == start { skip=1; next }
-    $0 == end { skip=0; next }
-    !skip { print }
-  ' "$current_crontab" > "$filtered_crontab"
-
-  {
-    cat "$filtered_crontab"
-    printf "%s\n" "$CRON_BLOCK_START"
-    printf "%s\n" "CRON_TZ=America/New_York"
-    printf "%s\n" "0 9,18 * * * $SCHEDULE_COMMAND"
-    printf "%s\n" "$CRON_BLOCK_END"
-  } | crontab -
-
-  rm -f "$current_crontab" "$filtered_crontab"
-}
-
 echo ""
 echo -e "${CYAN}Configuring scheduled posting...${RESET}"
-if command -v systemctl >/dev/null 2>&1; then
-  if install_systemd_timer; then
-    enable_systemd_linger
-    echo -e "  ${GREEN}✓${RESET} systemd timer installed at 9:00 AM and 6:00 PM ET"
-  else
-    echo -e "  ${DIM}systemd timer setup failed, falling back to crontab${RESET}"
-    if command -v crontab >/dev/null 2>&1; then
-      install_crontab_schedule
-      echo -e "  ${GREEN}✓${RESET} crontab installed at 9:00 AM and 6:00 PM ET"
-    else
-      echo -e "  ${DIM}No systemctl or crontab found. Skipping scheduler setup.${RESET}"
-    fi
-  fi
-elif command -v crontab >/dev/null 2>&1; then
-  install_crontab_schedule
-  echo -e "  ${GREEN}✓${RESET} crontab installed at 9:00 AM and 6:00 PM ET"
-else
+if ! "$BIN_DIR/xcron" install-schedule; then
   echo -e "  ${DIM}No systemctl or crontab found. Skipping scheduler setup.${RESET}"
 fi
 

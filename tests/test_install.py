@@ -1,10 +1,18 @@
 import pathlib
 import subprocess
+import sys
 
 
 def write_stub(path: pathlib.Path, contents: str) -> None:
     path.write_text(contents, encoding="utf-8")
     path.chmod(0o755)
+
+
+def write_python_passthrough_stub(path: pathlib.Path) -> None:
+    write_stub(
+        path,
+        f"#!/usr/bin/env bash\nexec {sys.executable} \"$@\"\n",
+    )
 
 
 def test_install_uses_home_for_config_and_bin_dirs(repo_root, install_env):
@@ -13,10 +21,7 @@ def test_install_uses_home_for_config_and_bin_dirs(repo_root, install_env):
     bin_dir = install_env["bin_dir"]
     pip_log = install_env["pip_log"]
 
-    write_stub(
-        bin_dir / "python3",
-        "#!/usr/bin/env bash\nexit 0\n",
-    )
+    write_python_passthrough_stub(bin_dir / "python3")
     write_stub(
         bin_dir / "git",
         "#!/usr/bin/env bash\nexit 0\n",
@@ -61,10 +66,7 @@ def test_install_configures_systemd_timer_when_available(repo_root, install_env)
     systemctl_log = fake_home / "systemctl.log"
     loginctl_log = fake_home / "loginctl.log"
 
-    write_stub(
-        bin_dir / "python3",
-        "#!/usr/bin/env bash\nexit 0\n",
-    )
+    write_python_passthrough_stub(bin_dir / "python3")
     write_stub(
         bin_dir / "git",
         "#!/usr/bin/env bash\nexit 0\n",
@@ -142,16 +144,15 @@ def test_install_configures_systemd_timer_when_available(repo_root, install_env)
     assert "user lingering enabled for reboot persistence" in result.stdout
 
 
-def test_install_keeps_systemd_timer_when_loginctl_is_unavailable(repo_root, install_env):
+def test_install_keeps_systemd_timer_when_loginctl_is_unavailable(
+    repo_root, install_env
+):
     install_path = repo_root / "install.sh"
     fake_home = install_env["fake_home"]
     bin_dir = install_env["bin_dir"]
     pip_log = install_env["pip_log"]
 
-    write_stub(
-        bin_dir / "python3",
-        "#!/usr/bin/env bash\nexit 0\n",
-    )
+    write_python_passthrough_stub(bin_dir / "python3")
     write_stub(
         bin_dir / "git",
         "#!/usr/bin/env bash\nexit 0\n",
@@ -189,10 +190,7 @@ def test_install_keeps_systemd_timer_when_enable_linger_fails(repo_root, install
     bin_dir = install_env["bin_dir"]
     pip_log = install_env["pip_log"]
 
-    write_stub(
-        bin_dir / "python3",
-        "#!/usr/bin/env bash\nexit 0\n",
-    )
+    write_python_passthrough_stub(bin_dir / "python3")
     write_stub(
         bin_dir / "git",
         "#!/usr/bin/env bash\nexit 0\n",
@@ -238,10 +236,7 @@ def test_install_falls_back_to_crontab_when_systemctl_is_unavailable(
     crontab_store = fake_home / "crontab.txt"
     crontab_log = fake_home / "crontab.log"
 
-    write_stub(
-        bin_dir / "python3",
-        "#!/usr/bin/env bash\nexit 0\n",
-    )
+    write_python_passthrough_stub(bin_dir / "python3")
     write_stub(
         bin_dir / "git",
         "#!/usr/bin/env bash\nexit 0\n",

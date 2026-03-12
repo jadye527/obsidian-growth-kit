@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sys
 
 import pytest
@@ -46,6 +47,26 @@ def test_unknown_command_exits_with_error(monkeypatch, capsys, load_tool_module)
     captured = capsys.readouterr()
     assert exc_info.value.code == 1
     assert "Unknown command: bogus" in captured.err
+
+
+def test_main_allows_subcommand_options(monkeypatch, load_tool_module):
+    module = load_tool_module("xcron")
+    install_calls = []
+
+    monkeypatch.setattr(
+        module,
+        "install_schedule",
+        lambda args, dry_run=False: install_calls.append((args, dry_run)),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["xcron", "install-schedule", "--scheduler", "crontab", "--dry-run"],
+    )
+
+    module.main()
+
+    assert install_calls == [(["--scheduler", "crontab"], True)]
 
 
 def test_queue_reactive_posts_adds_posts_until_target(
@@ -269,6 +290,129 @@ def test_publish_meme_post_runs_full_pipeline(
             False,
         ),
     ]
+
+
+def test_build_crontab_text_replaces_existing_managed_block(
+    monkeypatch, load_tool_module
+):
+    module = load_tool_module("xcron")
+    monkeypatch.setattr(module, "BIN_DIR", "/tmp/bin")
+    monkeypatch.setattr(module, "QUEUE_FILE", "/tmp/queue.json")
+    monkeypatch.setattr(module, "KEYS_FILE", "/tmp/keys.env")
+
+    current_crontab = (
+        "MAILTO=alerts@example.com\n"
+        "# BEGIN_OBSIDIAN_GROWTH_KIT_DAILY_POSTING\n"
+        "CRON_TZ=America/New_York\n"
+        "0 8 * * * old-command\n"
+        "# END_OBSIDIAN_GROWTH_KIT_DAILY_POSTING\n"
+    )
+
+    updated = module.build_crontab_text(current_crontab)
+
+    assert updated.count(module.CRON_BLOCK_START) == 1
+    assert "MAILTO=alerts@example.com" in updated
+    assert "0 9,18 * * *" in updated
+    assert "old-command" not in updated
+    assert updated.endswith("\n")
+
+
+def test_install_schedule_prefers_systemd_and_enables_linger(
+    tmp_path, monkeypatch, capsys, load_tool_module
+):
+    module = load_tool_module("xcron")
+    systemd_dir = tmp_path / "systemd"
+    systemd_dir.mkdir()
+    systemctl_calls = []
+    loginctl_calls = []
+
+    monkeypatch.setattr(module, "SYSTEMD_USER_DIR", str(systemd_dir))
+    monkeypatch.setattr(module, "SERVICE_FILE", str(systemd_dir / "ogk.service"))
+    monkeypatch.setattr(module, "TIMER_FILE", str(systemd_dir / "ogk.timer"))
+    monkeypatch.setattr(module, "SYSTEMD_LINGER_USER", "tester")
+    monkeypatch.setattr(
+        module.shutil,
+        "which",
+        lambda name: "/usr/bin/fake" if name in {"systemctl", "loginctl"} else None,
+    )
+
+    def fake_run_system_command(args, dry_run=False, input_text=None):
+        del dry_run, input_text
+        if args[0] == "systemctl":
+            systemctl_calls.append(args)
+        if args[0] == "loginctl":
+            loginctl_calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(module, "run_system_command", fake_run_system_command)
+
+    module.install_schedule([])
+
+    captured = capsys.readouterr()
+    assert "systemd timer installed at 9:00 AM and 6:00 PM ET" in captured.out
+    assert "user lingering enabled for reboot persistence" in captured.out
+    assert systemctl_calls == [
+        ["systemctl", "--user", "daemon-reload"],
+        ["systemctl", "--user", "enable", "--now", "obsidian-growth-kit-post.timer"],
+    ]
+    assert loginctl_calls == [["loginctl", "enable-linger", "tester"]]
+    assert (systemd_dir / "ogk.service").is_file()
+    assert (systemd_dir / "ogk.timer").is_file()
+
+
+def test_install_schedule_falls_back_to_crontab_when_systemd_fails(
+    monkeypatch, capsys, load_tool_module
+):
+    module = load_tool_module("xcron")
+    crontab_inputs = []
+
+    monkeypatch.setattr(
+        module.shutil,
+        "which",
+        lambda name: "/usr/bin/fake" if name in {"systemctl", "crontab"} else None,
+    )
+
+    def fake_run_system_command(args, dry_run=False, input_text=None):
+        del dry_run
+        if args[:3] == ["systemctl", "--user", "daemon-reload"]:
+            return subprocess.CompletedProcess(args, 1, "", "systemd unavailable")
+        if args == ["crontab", "-l"]:
+            return subprocess.CompletedProcess(
+                args,
+                0,
+                "MAILTO=alerts@example.com\n",
+                "",
+            )
+        if args == ["crontab", "-"]:
+            crontab_inputs.append(input_text)
+            return subprocess.CompletedProcess(args, 0, "", "")
+        raise AssertionError(f"Unexpected command: {args}")
+
+    monkeypatch.setattr(module, "run_system_command", fake_run_system_command)
+
+    module.install_schedule([])
+
+    captured = capsys.readouterr()
+    assert "crontab installed at 9:00 AM and 6:00 PM ET" in captured.out
+    assert len(crontab_inputs) == 1
+    assert "MAILTO=alerts@example.com" in crontab_inputs[0]
+    assert "0 9,18 * * *" in crontab_inputs[0]
+
+
+def test_install_schedule_requires_crontab_when_requested(
+    monkeypatch, load_tool_module
+):
+    module = load_tool_module("xcron")
+    monkeypatch.setattr(
+        module.shutil,
+        "which",
+        lambda name: None if name == "crontab" else "/usr/bin/fake",
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.install_schedule(["--scheduler", "crontab"])
+
+    assert exc_info.value.code == 1
 
 
 def test_extract_mention_ids_deduplicates_numeric_ids(load_tool_module):

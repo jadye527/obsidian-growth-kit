@@ -5,12 +5,35 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 
 SCOUT_RESULTS_FILE = os.environ.get(
     "X_SCOUT_RESULTS_FILE",
     os.path.expanduser("~/.config/x-api/scout-results.json"),
+)
+CONFIG_DIR = os.path.expanduser(
+    os.environ.get("X_CONFIG_DIR", "~/.config/x-api")
+)
+BIN_DIR = os.path.expanduser(os.environ.get("X_BIN_DIR", "~/.local/bin"))
+KEYS_FILE = os.path.expanduser(
+    os.environ.get("X_KEYS_FILE", os.path.join(CONFIG_DIR, "keys.env"))
+)
+QUEUE_FILE = os.path.expanduser(
+    os.environ.get("X_QUEUE_FILE", os.path.join(CONFIG_DIR, "queue.json"))
+)
+SYSTEMD_USER_DIR = os.path.expanduser(
+    os.environ.get("X_SYSTEMD_USER_DIR", "~/.config/systemd/user")
+)
+SCHEDULER_NAME = "obsidian-growth-kit-post"
+SERVICE_FILE = os.path.join(SYSTEMD_USER_DIR, f"{SCHEDULER_NAME}.service")
+TIMER_FILE = os.path.join(SYSTEMD_USER_DIR, f"{SCHEDULER_NAME}.timer")
+CRON_BLOCK_START = "# BEGIN_OBSIDIAN_GROWTH_KIT_DAILY_POSTING"
+CRON_BLOCK_END = "# END_OBSIDIAN_GROWTH_KIT_DAILY_POSTING"
+SYSTEMD_LINGER_USER = os.environ.get(
+    "SUDO_USER", os.environ.get("USER", "")
 )
 MAX_POST_LENGTH = 280
 
@@ -21,6 +44,7 @@ Usage:
   xcron --help
 
 Commands:
+  install-schedule     Install a persistent 9 AM / 6 PM ET posting schedule
   morning-growth       Run the daily morning growth pipeline
   content-scout        Run the midday scouting and engagement pipeline
   nightly-review       Run the nightly review and queue refresh pipeline
@@ -32,6 +56,8 @@ Options:
   --dry-run            Print commands without executing them
 
 Examples:
+  xcron install-schedule
+  xcron install-schedule --scheduler crontab --dry-run
   xcron morning-growth
   xcron content-scout
   xcron nightly-review --dry-run
@@ -56,27 +82,56 @@ def exit_error(message: str) -> None:
 def parse_args(args: list[str]) -> dict[str, object]:
     """Parse and validate top-level CLI arguments."""
     options: dict[str, object] = {"dry_run": False, "command_args": []}
-    positionals: list[str] = []
+    command: str | None = None
+    command_args: list[str] = []
 
     for arg in args:
+        if command is None:
+            if arg == "--dry-run":
+                options["dry_run"] = True
+                continue
+            if arg in {"-h", "--help"}:
+                options["help"] = True
+                continue
+            if arg.startswith("--"):
+                exit_error(f"Unknown option: {arg}")
+            command = arg
+            continue
+
         if arg == "--dry-run":
             options["dry_run"] = True
             continue
-        if arg in {"-h", "--help"}:
-            options["help"] = True
-            continue
-        if arg.startswith("--"):
-            exit_error(f"Unknown option: {arg}")
-        positionals.append(arg)
+        command_args.append(arg)
 
     if options.get("help"):
         return options
 
-    if not positionals:
+    if command is None:
         return {"help": True}
 
-    options["command"] = positionals[0]
-    options["command_args"] = positionals[1:]
+    options["command"] = command
+    options["command_args"] = command_args
+    return options
+
+
+def parse_install_schedule_args(args: list[str]) -> dict[str, str]:
+    """Parse and validate install-schedule options."""
+    options = {"scheduler": "auto"}
+    index = 0
+
+    while index < len(args):
+        token = args[index]
+        if token == "--scheduler":
+            if index + 1 >= len(args):
+                exit_error("Missing value for --scheduler")
+            scheduler = args[index + 1]
+            if scheduler not in {"auto", "systemd", "crontab"}:
+                exit_error("--scheduler must be one of: auto, systemd, crontab")
+            options["scheduler"] = scheduler
+            index += 2
+            continue
+        exit_error(f"Unknown option: {token}")
+
     return options
 
 
@@ -96,6 +151,223 @@ def run_command(args: list[str], dry_run: bool = False) -> str:
     if output:
         print(output)
     return output
+
+
+def run_system_command(
+    args: list[str],
+    *,
+    dry_run: bool = False,
+    input_text: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run a subprocess command used for scheduler installation."""
+    command_text = " ".join(shlex.quote(arg) for arg in args)
+    print(f"$ {command_text}")
+
+    if dry_run:
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    return subprocess.run(
+        args,
+        input=input_text,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def ensure_directory(path: str, dry_run: bool = False) -> None:
+    """Create a directory unless dry-run mode is enabled."""
+    if dry_run:
+        print(f"$ mkdir -p {shlex.quote(path)}")
+        return
+    os.makedirs(path, exist_ok=True)
+
+
+def write_text_file(path: str, contents: str, dry_run: bool = False) -> None:
+    """Write UTF-8 text to disk unless dry-run mode is enabled."""
+    if dry_run:
+        print(f"$ write {path}")
+        print(contents.rstrip())
+        return
+
+    with open(path, "w", encoding="utf-8") as file_handle:
+        file_handle.write(contents)
+
+
+def build_schedule_command() -> str:
+    """Build the scheduled post command with explicit environment."""
+    path_value = f'{BIN_DIR}:/usr/local/bin:/usr/bin:/bin'
+    env_bits = [
+        f"PATH={shlex.quote(path_value)}",
+        f"X_QUEUE_FILE={shlex.quote(QUEUE_FILE)}",
+        f"X_KEYS_FILE={shlex.quote(KEYS_FILE)}",
+    ]
+    return " ".join(env_bits) + " xqueue next >/dev/null 2>&1"
+
+
+def remove_managed_cron_block(crontab_text: str) -> str:
+    """Remove the managed Obsidian Growth Kit block from a crontab."""
+    kept_lines: list[str] = []
+    skip = False
+
+    for line in crontab_text.splitlines():
+        if line == CRON_BLOCK_START:
+            skip = True
+            continue
+        if line == CRON_BLOCK_END:
+            skip = False
+            continue
+        if not skip:
+            kept_lines.append(line)
+
+    return "\n".join(kept_lines).strip("\n")
+
+
+def build_crontab_text(existing_crontab: str) -> str:
+    """Merge the managed schedule block into an existing crontab."""
+    preserved = remove_managed_cron_block(existing_crontab)
+    lines: list[str] = []
+
+    if preserved:
+        lines.append(preserved)
+    lines.extend(
+        [
+            CRON_BLOCK_START,
+            "CRON_TZ=America/New_York",
+            f"0 9,18 * * * {build_schedule_command()}",
+            CRON_BLOCK_END,
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def install_crontab_schedule(dry_run: bool = False) -> None:
+    """Install the managed schedule into the user's crontab."""
+    result = run_system_command(["crontab", "-l"], dry_run=dry_run)
+    current_crontab = result.stdout if result.returncode == 0 else ""
+    new_crontab = build_crontab_text(current_crontab)
+
+    if dry_run:
+        print(new_crontab.rstrip())
+        print("crontab installed at 9:00 AM and 6:00 PM ET")
+        return
+
+    install_result = run_system_command(
+        ["crontab", "-"],
+        input_text=new_crontab,
+    )
+    if install_result.returncode != 0:
+        details = install_result.stderr.strip() or "crontab installation failed"
+        exit_error(details)
+
+    print("crontab installed at 9:00 AM and 6:00 PM ET")
+
+
+def build_systemd_service_text() -> str:
+    """Build the systemd service definition for scheduled posting."""
+    path_value = shlex.quote(f"{BIN_DIR}:/usr/local/bin:/usr/bin:/bin")
+    queue_value = shlex.quote(QUEUE_FILE)
+    keys_value = shlex.quote(KEYS_FILE)
+    exec_start = (
+        "/bin/sh -lc "
+        f"'PATH={path_value}; export PATH "
+        f"X_QUEUE_FILE={queue_value} "
+        f"X_KEYS_FILE={keys_value}; exec xqueue next'"
+    )
+    return f"""[Unit]
+Description=Obsidian Growth Kit scheduled posting
+
+[Service]
+Type=oneshot
+ExecStart={exec_start}
+"""
+
+
+def build_systemd_timer_text() -> str:
+    """Build the systemd timer definition for scheduled posting."""
+    return f"""[Unit]
+Description=Obsidian Growth Kit scheduled posting timer
+
+[Timer]
+OnCalendar=*-*-* 09:00:00 America/New_York
+OnCalendar=*-*-* 18:00:00 America/New_York
+Persistent=true
+Unit={SCHEDULER_NAME}.service
+
+[Install]
+WantedBy=timers.target
+"""
+
+
+def enable_systemd_linger(dry_run: bool = False) -> None:
+    """Enable user lingering so user timers survive reboots."""
+    if not SYSTEMD_LINGER_USER:
+        print("Unable to determine linger user. Timer may require login after reboot.")
+        return
+    if shutil.which("loginctl") is None:
+        print("loginctl not found. User timer may require login after reboot.")
+        return
+
+    result = run_system_command(
+        ["loginctl", "enable-linger", SYSTEMD_LINGER_USER],
+        dry_run=dry_run,
+    )
+    if result.returncode == 0:
+        print("user lingering enabled for reboot persistence")
+        return
+
+    print(
+        f"Unable to enable lingering for {SYSTEMD_LINGER_USER}. "
+        "Timer may require login after reboot."
+    )
+
+
+def install_systemd_timer(dry_run: bool = False) -> bool:
+    """Install the managed systemd user timer."""
+    if shutil.which("systemctl") is None:
+        return False
+
+    ensure_directory(SYSTEMD_USER_DIR, dry_run=dry_run)
+    write_text_file(SERVICE_FILE, build_systemd_service_text(), dry_run=dry_run)
+    write_text_file(TIMER_FILE, build_systemd_timer_text(), dry_run=dry_run)
+
+    daemon_reload = run_system_command(
+        ["systemctl", "--user", "daemon-reload"],
+        dry_run=dry_run,
+    )
+    if daemon_reload.returncode != 0:
+        return False
+
+    enable_result = run_system_command(
+        ["systemctl", "--user", "enable", "--now", f"{SCHEDULER_NAME}.timer"],
+        dry_run=dry_run,
+    )
+    if enable_result.returncode != 0:
+        return False
+
+    enable_systemd_linger(dry_run=dry_run)
+    print("systemd timer installed at 9:00 AM and 6:00 PM ET")
+    return True
+
+
+def install_schedule(command_args: list[str], dry_run: bool = False) -> None:
+    """Install a persistent posting schedule using systemd or crontab."""
+    options = parse_install_schedule_args(command_args)
+    scheduler = options["scheduler"]
+
+    if scheduler in {"auto", "systemd"} and install_systemd_timer(dry_run=dry_run):
+        return
+
+    if scheduler == "systemd":
+        exit_error("systemd timer setup failed")
+
+    if scheduler in {"auto", "crontab"}:
+        if shutil.which("crontab") is None:
+            exit_error("crontab is not available")
+        install_crontab_schedule(dry_run=dry_run)
+        return
+
+    exit_error(f"Unknown scheduler: {scheduler}")
 
 
 def load_scout_results() -> list[dict[str, object]]:
@@ -421,6 +693,9 @@ def main() -> None:
     command_args = list(options["command_args"])
     dry_run = bool(options["dry_run"])
 
+    if command == "install-schedule":
+        install_schedule(command_args, dry_run=dry_run)
+        return
     if command == "morning-growth":
         if command_args:
             exit_error("Usage: xcron morning-growth [--dry-run]")
