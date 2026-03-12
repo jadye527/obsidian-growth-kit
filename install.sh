@@ -23,6 +23,7 @@ SERVICE_FILE="${SYSTEMD_USER_DIR}/${SCHEDULER_NAME}.service"
 TIMER_FILE="${SYSTEMD_USER_DIR}/${SCHEDULER_NAME}.timer"
 CRON_BLOCK_START="# BEGIN_OBSIDIAN_GROWTH_KIT_DAILY_POSTING"
 CRON_BLOCK_END="# END_OBSIDIAN_GROWTH_KIT_DAILY_POSTING"
+SYSTEMD_LINGER_USER="${SUDO_USER:-${USER:-$(id -un)}}"
 
 # Check dependencies
 echo -e "${CYAN}Checking dependencies...${RESET}"
@@ -138,6 +139,20 @@ EOF
   systemctl --user enable --now "${SCHEDULER_NAME}.timer"
 }
 
+enable_systemd_linger() {
+  if ! command -v loginctl >/dev/null 2>&1; then
+    echo -e "  ${DIM}loginctl not found. User timer may require login after reboot.${RESET}"
+    return 0
+  fi
+
+  if loginctl enable-linger "$SYSTEMD_LINGER_USER" >/dev/null 2>&1; then
+    echo -e "  ${GREEN}✓${RESET} user lingering enabled for reboot persistence"
+    return 0
+  fi
+
+  echo -e "  ${DIM}Unable to enable lingering for $SYSTEMD_LINGER_USER. Timer may require login after reboot.${RESET}"
+}
+
 install_crontab_schedule() {
   local current_crontab
   local filtered_crontab
@@ -169,6 +184,7 @@ echo ""
 echo -e "${CYAN}Configuring scheduled posting...${RESET}"
 if command -v systemctl >/dev/null 2>&1; then
   if install_systemd_timer; then
+    enable_systemd_linger
     echo -e "  ${GREEN}✓${RESET} systemd timer installed at 9:00 AM and 6:00 PM ET"
   else
     echo -e "  ${DIM}systemd timer setup failed, falling back to crontab${RESET}"

@@ -59,6 +59,7 @@ def test_install_configures_systemd_timer_when_available(repo_root, install_env)
     bin_dir = install_env["bin_dir"]
     pip_log = install_env["pip_log"]
     systemctl_log = fake_home / "systemctl.log"
+    loginctl_log = fake_home / "loginctl.log"
 
     write_stub(
         bin_dir / "python3",
@@ -83,6 +84,19 @@ def test_install_configures_systemd_timer_when_available(repo_root, install_env)
             f"printf '%s\\n' \"$*\" >> {systemctl_log}\n"
             "exit 0\n"
         ),
+    )
+    write_stub(
+        bin_dir / "loginctl",
+        (
+            "#!/usr/bin/env bash\n"
+            f"printf '%s\\n' \"$*\" >> {loginctl_log}\n"
+            "exit 0\n"
+        ),
+    )
+
+    expected_linger_user = install_env["env"].get(
+        "SUDO_USER",
+        install_env["env"].get("USER"),
     )
 
     result = subprocess.run(
@@ -122,6 +136,96 @@ def test_install_configures_systemd_timer_when_available(repo_root, install_env)
     systemctl_calls = systemctl_log.read_text(encoding="utf-8").splitlines()
     assert "daemon-reload" in systemctl_calls
     assert "enable --now obsidian-growth-kit-post.timer" in systemctl_calls
+
+    loginctl_calls = loginctl_log.read_text(encoding="utf-8").splitlines()
+    assert f"enable-linger {expected_linger_user}" in loginctl_calls
+    assert "user lingering enabled for reboot persistence" in result.stdout
+
+
+def test_install_keeps_systemd_timer_when_loginctl_is_unavailable(repo_root, install_env):
+    install_path = repo_root / "install.sh"
+    fake_home = install_env["fake_home"]
+    bin_dir = install_env["bin_dir"]
+    pip_log = install_env["pip_log"]
+
+    write_stub(
+        bin_dir / "python3",
+        "#!/usr/bin/env bash\nexit 0\n",
+    )
+    write_stub(
+        bin_dir / "git",
+        "#!/usr/bin/env bash\nexit 0\n",
+    )
+    write_stub(
+        bin_dir / "pip3",
+        (
+            "#!/usr/bin/env bash\n"
+            f"printf '%s\\n' \"$*\" >> {pip_log}\n"
+            "exit 0\n"
+        ),
+    )
+    write_stub(
+        bin_dir / "systemctl",
+        "#!/usr/bin/env bash\nexit 0\n",
+    )
+
+    result = subprocess.run(
+        ["bash", str(install_path)],
+        cwd=repo_root,
+        env=install_env["env"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "systemd timer installed at 9:00 AM and 6:00 PM ET" in result.stdout
+    assert "loginctl not found" in result.stdout
+
+
+def test_install_keeps_systemd_timer_when_enable_linger_fails(repo_root, install_env):
+    install_path = repo_root / "install.sh"
+    fake_home = install_env["fake_home"]
+    bin_dir = install_env["bin_dir"]
+    pip_log = install_env["pip_log"]
+
+    write_stub(
+        bin_dir / "python3",
+        "#!/usr/bin/env bash\nexit 0\n",
+    )
+    write_stub(
+        bin_dir / "git",
+        "#!/usr/bin/env bash\nexit 0\n",
+    )
+    write_stub(
+        bin_dir / "pip3",
+        (
+            "#!/usr/bin/env bash\n"
+            f"printf '%s\\n' \"$*\" >> {pip_log}\n"
+            "exit 0\n"
+        ),
+    )
+    write_stub(
+        bin_dir / "systemctl",
+        "#!/usr/bin/env bash\nexit 0\n",
+    )
+    write_stub(
+        bin_dir / "loginctl",
+        "#!/usr/bin/env bash\nexit 1\n",
+    )
+
+    result = subprocess.run(
+        ["bash", str(install_path)],
+        cwd=repo_root,
+        env=install_env["env"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "systemd timer installed at 9:00 AM and 6:00 PM ET" in result.stdout
+    assert "Unable to enable lingering" in result.stdout
 
 
 def test_install_falls_back_to_crontab_when_systemctl_is_unavailable(
