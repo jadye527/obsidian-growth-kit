@@ -21,6 +21,7 @@ HELP_TEXT = """xpost — X/Twitter CLI
 Usage:
   xpost <command> [args] [--json]
   xpost --text "text" [--media /path/to/file]
+  xpost --text-file /path/to/post.md [--media /path/to/file]
   xpost --help
 
 Commands:
@@ -48,6 +49,7 @@ Examples:
   xpost whoami
   xpost tweet "Shipping the help flag today"
   xpost --media ~/image.png --text "Shipping with media"
+  xpost --media ~/image.png --text-file ~/post.md
   xpost reply 1234567890 "Thanks for the feedback"
   xpost search "obsidian growth" --json
 """
@@ -128,20 +130,28 @@ def validate_tweet_id(tweet_id):
 def parse_post_options(args):
     """Parse flag-based tweet options from argv."""
     text = None
+    text_file = None
     media_path = None
+    usage = "Usage: xpost (--text \"your message\" | --text-file /path/to/post.md) [--media /path/to/file]"
     index = 0
 
     while index < len(args):
         arg = args[index]
         if arg == "--text":
             if index + 1 >= len(args):
-                exit_error("Usage: xpost --text \"your message\" [--media /path/to/file]")
+                exit_error(usage)
             text = args[index + 1]
+            index += 2
+            continue
+        if arg == "--text-file":
+            if index + 1 >= len(args):
+                exit_error(usage)
+            text_file = os.path.expanduser(args[index + 1])
             index += 2
             continue
         if arg == "--media":
             if index + 1 >= len(args):
-                exit_error("Usage: xpost --text \"your message\" [--media /path/to/file]")
+                exit_error(usage)
             media_path = os.path.expanduser(args[index + 1])
             index += 2
             continue
@@ -150,11 +160,23 @@ def parse_post_options(args):
             continue
         exit_error(f"Unknown command: {arg}")
 
-    if text is None and media_path is None:
+    if text is None and text_file is None and media_path is None:
         return None
 
+    if text and text_file:
+        exit_error("Use either --text or --text-file, not both.")
+
+    if text_file:
+        if not os.path.isfile(text_file):
+            exit_error(f"Text file not found: {text_file}")
+        try:
+            with open(text_file, encoding="utf-8") as file_handle:
+                text = file_handle.read().strip()
+        except OSError as exc:
+            exit_error(f"Unable to read text file {text_file}: {exc}")
+
     if not text and not media_path:
-        exit_error("Usage: xpost --text \"your message\" [--media /path/to/file]")
+        exit_error(usage)
 
     if media_path and not os.path.isfile(media_path):
         exit_error(f"Media file not found: {media_path}")
@@ -164,7 +186,7 @@ def parse_post_options(args):
 
 def is_flag_post_request(args):
     """Return True when argv uses the flag-based post form."""
-    return "--text" in args or "--media" in args
+    return "--text" in args or "--text-file" in args or "--media" in args
 
 
 def create_post(client, env, text=None, media_path=None):
@@ -226,6 +248,9 @@ def handle_runtime_error(exc):
         "TooManyRequests",
         "HTTPException",
     }:
+        exit_error(f"X API error: {exc}")
+
+    if isinstance(exc, ValueError):
         exit_error(f"X API error: {exc}")
 
     raise exc

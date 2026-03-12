@@ -1,0 +1,2 @@
+CRON_TZ=America/New_York
+18 9 13 3 * /bin/bash -lc 'set -euo pipefail; TODAY="$(date +\%F)"; [ "$TODAY" = "2026-03-13" ] || exit 0; LOCK_FILE="${X_RELEASE_POST_LOCK_FILE:-$HOME/.config/x-api/release-post-2026-03-13.lock}"; [ ! -e "$LOCK_FILE" ] || exit 0; OGK_REPO_DIR="${OGK_REPO_DIR:-$HOME/obsidian-growth-kit}"; xpost --text-file "$OGK_REPO_DIR/x-post-release-package-2026-03-12.md" --media "$OGK_REPO_DIR/out/charlie_fire_v1d.png"; mkdir -p "$(dirname "$LOCK_FILE")"; : > "$LOCK_FILE"'

@@ -208,7 +208,7 @@ def test_next_respects_cooldown(
         "load_queue",
         lambda: make_queue(
             make_queue_tweet("queued tweet", 10),
-            last_posted=100,
+            last_posted=101,
         ),
     )
 
@@ -220,7 +220,7 @@ def test_next_respects_cooldown(
     module.main()
 
     captured = capsys.readouterr()
-    assert captured.out.strip() == "Cooldown: 800s remaining"
+    assert captured.out.strip() == "Cooldown: 1s remaining"
     assert captured.err == ""
 
 

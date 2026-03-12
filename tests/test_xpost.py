@@ -15,6 +15,7 @@ def test_help_flag_prints_usage_examples(capsys, monkeypatch, load_tool_module):
     assert "Examples:" in captured.out
     assert 'xpost tweet "Shipping the help flag today"' in captured.out
     assert 'xpost --media ~/image.png --text "Shipping with media"' in captured.out
+    assert 'xpost --media ~/image.png --text-file ~/post.md' in captured.out
     assert captured.err == ""
 
 
@@ -198,8 +199,51 @@ def test_flag_post_with_media_uploads_and_posts(
 
     captured = capsys.readouterr()
     assert calls["media"] == str(media_file)
-    assert calls["tweet"] == {"text": "test", "media_ids": ["999"]}
+    assert calls["tweet"] == {
+        "text": "test",
+        "media_ids": ["999"],
+        "user_auth": True,
+    }
     assert "https://x.com/tester/status/123" in captured.out
+    assert captured.err == ""
+
+
+def test_flag_post_with_text_file_reads_copy_and_posts(
+    monkeypatch, capsys, load_tool_module, tmp_path
+):
+    module = load_tool_module("xpost")
+    text_file = tmp_path / "post.md"
+    text_file.write_text("scheduled copy\n", encoding="utf-8")
+    calls = {}
+
+    class FakeClient:
+        def create_tweet(self, **kwargs):
+            calls["tweet"] = kwargs
+            return types.SimpleNamespace(data={"id": "124"})
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["xpost", "--text-file", str(text_file)],
+    )
+    monkeypatch.setattr(
+        module,
+        "load_keys",
+        lambda: {
+            "X_API_KEY": "key",
+            "X_API_SECRET": "secret",
+            "X_ACCESS_TOKEN": "token",
+            "X_ACCESS_TOKEN_SECRET": "token-secret",
+            "X_USER_HANDLE": "tester",
+        },
+    )
+    monkeypatch.setattr(module, "get_client", lambda env: FakeClient())
+
+    module.main()
+
+    captured = capsys.readouterr()
+    assert calls["tweet"] == {"text": "scheduled copy", "user_auth": True}
+    assert "https://x.com/tester/status/124" in captured.out
     assert captured.err == ""
 
 
@@ -320,3 +364,56 @@ def test_flag_post_missing_media_file_exits_before_api_calls(
     captured = capsys.readouterr()
     assert exc_info.value.code == 1
     assert f"Media file not found: {missing_file}" in captured.err
+
+
+def test_flag_post_missing_text_file_exits_before_api_calls(
+    monkeypatch, capsys, load_tool_module, tmp_path
+):
+    module = load_tool_module("xpost")
+    missing_file = tmp_path / "missing.md"
+
+    monkeypatch.setattr(sys, "argv", ["xpost", "--text-file", str(missing_file)])
+    monkeypatch.setattr(module, "load_keys", lambda: {})
+    monkeypatch.setattr(
+        module,
+        "get_client",
+        lambda env: (_ for _ in ()).throw(
+            AssertionError("client should not be created")
+        ),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert f"Text file not found: {missing_file}" in captured.err
+
+
+def test_flag_post_rejects_text_and_text_file_together(
+    monkeypatch, capsys, load_tool_module, tmp_path
+):
+    module = load_tool_module("xpost")
+    text_file = tmp_path / "post.md"
+    text_file.write_text("scheduled copy\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["xpost", "--text", "inline", "--text-file", str(text_file)],
+    )
+    monkeypatch.setattr(module, "load_keys", lambda: {})
+    monkeypatch.setattr(
+        module,
+        "get_client",
+        lambda env: (_ for _ in ()).throw(
+            AssertionError("client should not be created")
+        ),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert "Use either --text or --text-file, not both." in captured.err
