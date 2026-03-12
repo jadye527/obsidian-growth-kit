@@ -200,11 +200,19 @@ def build_result(
 ) -> dict[str, object]:
     """Normalize an HTTP response into a serializable result payload."""
     headers = response_headers(response)
+    if hasattr(headers, "get_all"):
+        set_cookie_headers = headers.get_all("Set-Cookie") or []
+    else:
+        set_cookie_headers = [
+            value
+            for key, value in dict(headers).items()
+            if key.lower() == "set-cookie"
+        ]
     return {
         "url": url,
         "status": response.getcode(),
         "headers": dict(headers.items()),
-        "set_cookie_headers": headers.get_all("Set-Cookie") or [],
+        "set_cookie_headers": set_cookie_headers,
         "body": body,
         "host": host,
         "cookie_sent": cookie_sent,

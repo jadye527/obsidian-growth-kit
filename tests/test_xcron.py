@@ -474,6 +474,38 @@ def test_install_schedule_prefers_systemd_and_enables_linger(
     assert (systemd_dir / "obsidian-growth-kit-analytics-snapshot.timer").is_file()
 
 
+def test_install_schedule_falls_back_to_crontab_when_linger_is_unavailable(
+    monkeypatch, capsys, load_tool_module
+):
+    module = load_tool_module("xcron")
+    crontab_inputs = []
+
+    monkeypatch.setattr(
+        module.shutil,
+        "which",
+        lambda name: "/usr/bin/fake" if name in {"systemctl", "crontab"} else None,
+    )
+
+    def fake_run_system_command(args, dry_run=False, input_text=None):
+        del dry_run
+        if args == ["crontab", "-l"]:
+            return subprocess.CompletedProcess(args, 0, "", "")
+        if args == ["crontab", "-"]:
+            crontab_inputs.append(input_text)
+            return subprocess.CompletedProcess(args, 0, "", "")
+        raise AssertionError(f"Unexpected command: {args}")
+
+    monkeypatch.setattr(module, "run_system_command", fake_run_system_command)
+
+    module.install_schedule([])
+
+    captured = capsys.readouterr()
+    assert "loginctl not found" in captured.out
+    assert "crontab installed for autonomous X growth workflows" in captured.out
+    assert len(crontab_inputs) == 1
+    assert "xcron autonomous-post >/dev/null 2>&1" in crontab_inputs[0]
+
+
 def test_install_schedule_falls_back_to_crontab_when_systemd_fails(
     monkeypatch, capsys, load_tool_module
 ):
@@ -515,6 +547,22 @@ def test_install_schedule_falls_back_to_crontab_when_systemd_fails(
     assert "xcron content-scout >/dev/null 2>&1" in crontab_inputs[0]
     assert "xcron nightly-review >/dev/null 2>&1" in crontab_inputs[0]
     assert "xcron analytics-snapshot >/dev/null 2>&1" in crontab_inputs[0]
+
+
+def test_install_schedule_requires_reboot_persistent_systemd(
+    monkeypatch, load_tool_module
+):
+    module = load_tool_module("xcron")
+    monkeypatch.setattr(
+        module.shutil,
+        "which",
+        lambda name: "/usr/bin/fake" if name == "systemctl" else None,
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.install_schedule(["--scheduler", "systemd"])
+
+    assert exc_info.value.code == 1
 
 
 def test_install_schedule_requires_crontab_when_requested(

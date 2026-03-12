@@ -342,14 +342,14 @@ WantedBy=timers.target
 """
 
 
-def enable_systemd_linger(dry_run: bool = False) -> None:
+def enable_systemd_linger(dry_run: bool = False) -> bool:
     """Enable user lingering so user timers survive reboots."""
     if not SYSTEMD_LINGER_USER:
         print("Unable to determine linger user. Timer may require login after reboot.")
-        return
+        return False
     if shutil.which("loginctl") is None:
         print("loginctl not found. User timer may require login after reboot.")
-        return
+        return False
 
     result = run_system_command(
         ["loginctl", "enable-linger", SYSTEMD_LINGER_USER],
@@ -357,17 +357,20 @@ def enable_systemd_linger(dry_run: bool = False) -> None:
     )
     if result.returncode == 0:
         print("user lingering enabled for reboot persistence")
-        return
+        return True
 
     print(
         f"Unable to enable lingering for {SYSTEMD_LINGER_USER}. "
         "Timer may require login after reboot."
     )
+    return False
 
 
 def install_systemd_timer(dry_run: bool = False) -> bool:
     """Install the managed systemd user timer."""
     if shutil.which("systemctl") is None:
+        return False
+    if not enable_systemd_linger(dry_run=dry_run):
         return False
 
     ensure_directory(SYSTEMD_USER_DIR, dry_run=dry_run)
@@ -407,7 +410,6 @@ def install_systemd_timer(dry_run: bool = False) -> bool:
         if enable_result.returncode != 0:
             return False
 
-    enable_systemd_linger(dry_run=dry_run)
     print("systemd timers installed for autonomous X growth workflows")
     return True
 

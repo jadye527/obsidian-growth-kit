@@ -116,41 +116,44 @@ def test_install_configures_systemd_timer_when_available(repo_root, install_env)
         / ".config"
         / "systemd"
         / "user"
-        / "obsidian-growth-kit-post.service"
+        / "obsidian-growth-kit-autonomous-post.service"
     )
     timer_file = (
         fake_home
         / ".config"
         / "systemd"
         / "user"
-        / "obsidian-growth-kit-post.timer"
+        / "obsidian-growth-kit-autonomous-post.timer"
     )
 
     assert service_file.is_file()
     assert timer_file.is_file()
-    assert "xqueue next" in service_file.read_text(encoding="utf-8")
+    assert "xcron autonomous-post" in service_file.read_text(encoding="utf-8")
 
     timer_text = timer_file.read_text(encoding="utf-8")
-    assert "OnCalendar=*-*-* 09:00:00 America/New_York" in timer_text
-    assert "OnCalendar=*-*-* 18:00:00 America/New_York" in timer_text
+    assert "OnCalendar=*-*-* 09,18:00:00 America/New_York" in timer_text
     assert "Persistent=true" in timer_text
 
     systemctl_calls = systemctl_log.read_text(encoding="utf-8").splitlines()
-    assert "daemon-reload" in systemctl_calls
-    assert "enable --now obsidian-growth-kit-post.timer" in systemctl_calls
+    assert "--user daemon-reload" in systemctl_calls
+    assert (
+        "--user enable --now obsidian-growth-kit-autonomous-post.timer"
+        in systemctl_calls
+    )
 
     loginctl_calls = loginctl_log.read_text(encoding="utf-8").splitlines()
     assert f"enable-linger {expected_linger_user}" in loginctl_calls
     assert "user lingering enabled for reboot persistence" in result.stdout
 
 
-def test_install_keeps_systemd_timer_when_loginctl_is_unavailable(
+def test_install_falls_back_to_crontab_when_enable_linger_is_unavailable(
     repo_root, install_env
 ):
     install_path = repo_root / "install.sh"
     fake_home = install_env["fake_home"]
     bin_dir = install_env["bin_dir"]
     pip_log = install_env["pip_log"]
+    crontab_store = fake_home / "crontab.txt"
 
     write_python_passthrough_stub(bin_dir / "python3")
     write_stub(
@@ -169,6 +172,30 @@ def test_install_keeps_systemd_timer_when_loginctl_is_unavailable(
         bin_dir / "systemctl",
         "#!/usr/bin/env bash\nexit 0\n",
     )
+    write_stub(
+        bin_dir / "loginctl",
+        "#!/usr/bin/env bash\nexit 127\n",
+    )
+    write_stub(
+        bin_dir / "crontab",
+        (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            f"store={crontab_store}\n"
+            "if [ \"$#\" -eq 1 ] && [ \"$1\" = \"-l\" ]; then\n"
+            "  if [ -f \"$store\" ]; then\n"
+            "    cat \"$store\"\n"
+            "    exit 0\n"
+            "  fi\n"
+            "  exit 1\n"
+            "fi\n"
+            "if [ \"$#\" -eq 1 ] && [ \"$1\" = \"-\" ]; then\n"
+            "  cat > \"$store\"\n"
+            "  exit 0\n"
+            "fi\n"
+            "exit 1\n"
+        ),
+    )
 
     result = subprocess.run(
         ["bash", str(install_path)],
@@ -180,8 +207,8 @@ def test_install_keeps_systemd_timer_when_loginctl_is_unavailable(
     )
 
     assert result.returncode == 0, result.stderr
-    assert "systemd timer installed at 9:00 AM and 6:00 PM ET" in result.stdout
-    assert "loginctl not found" in result.stdout
+    assert "crontab installed for autonomous X growth workflows" in result.stdout
+    assert "Unable to enable lingering" in result.stdout
 
 
 def test_install_keeps_systemd_timer_when_enable_linger_fails(repo_root, install_env):
@@ -189,6 +216,7 @@ def test_install_keeps_systemd_timer_when_enable_linger_fails(repo_root, install
     fake_home = install_env["fake_home"]
     bin_dir = install_env["bin_dir"]
     pip_log = install_env["pip_log"]
+    crontab_store = fake_home / "crontab.txt"
 
     write_python_passthrough_stub(bin_dir / "python3")
     write_stub(
@@ -211,6 +239,26 @@ def test_install_keeps_systemd_timer_when_enable_linger_fails(repo_root, install
         bin_dir / "loginctl",
         "#!/usr/bin/env bash\nexit 1\n",
     )
+    write_stub(
+        bin_dir / "crontab",
+        (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            f"store={crontab_store}\n"
+            "if [ \"$#\" -eq 1 ] && [ \"$1\" = \"-l\" ]; then\n"
+            "  if [ -f \"$store\" ]; then\n"
+            "    cat \"$store\"\n"
+            "    exit 0\n"
+            "  fi\n"
+            "  exit 1\n"
+            "fi\n"
+            "if [ \"$#\" -eq 1 ] && [ \"$1\" = \"-\" ]; then\n"
+            "  cat > \"$store\"\n"
+            "  exit 0\n"
+            "fi\n"
+            "exit 1\n"
+        ),
+    )
 
     result = subprocess.run(
         ["bash", str(install_path)],
@@ -222,7 +270,7 @@ def test_install_keeps_systemd_timer_when_enable_linger_fails(repo_root, install
     )
 
     assert result.returncode == 0, result.stderr
-    assert "systemd timer installed at 9:00 AM and 6:00 PM ET" in result.stdout
+    assert "crontab installed for autonomous X growth workflows" in result.stdout
     assert "Unable to enable lingering" in result.stdout
 
 
@@ -281,12 +329,12 @@ def test_install_falls_back_to_crontab_when_systemctl_is_unavailable(
     )
 
     assert result.returncode == 0, result.stderr
-    assert "crontab installed at 9:00 AM and 6:00 PM ET" in result.stdout
+    assert "crontab installed for autonomous X growth workflows" in result.stdout
 
     crontab_text = crontab_store.read_text(encoding="utf-8")
     assert "CRON_TZ=America/New_York" in crontab_text
     assert "0 9,18 * * *" in crontab_text
-    assert "xqueue next >/dev/null 2>&1" in crontab_text
+    assert "xcron autonomous-post >/dev/null 2>&1" in crontab_text
     assert str(fake_home / ".config" / "x-api" / "keys.env") in crontab_text
 
     crontab_calls = crontab_log.read_text(encoding="utf-8").splitlines()
