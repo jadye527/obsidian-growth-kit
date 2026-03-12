@@ -205,6 +205,25 @@ def create_post(client, env, text=None, media_path=None):
     return client.create_tweet(user_auth=True, **payload)
 
 
+def confirm_post(client, tweet_id):
+    """Confirm a newly created tweet can be read back from the API."""
+    tweet_id = validate_tweet_id(tweet_id)
+    response = client.get_tweet(
+        tweet_id,
+        tweet_fields=["created_at", "public_metrics", "author_id"],
+        expansions=["author_id"],
+    )
+    if not getattr(response, "data", None):
+        raise ValueError(f"Posted tweet could not be confirmed: {tweet_id}")
+    return response.data
+
+
+def print_post_success(client, env, tweet_id, label="Tweet posted"):
+    """Confirm the post exists before printing the success URL."""
+    confirm_post(client, tweet_id)
+    print(f"{label}: https://x.com/{env.get('X_USER_HANDLE', 'i')}/status/{tweet_id}")
+
+
 def upload_media(env, media_path):
     """Upload media with the Tweepy API and return a media ID string."""
     media_api = get_media_api(env)
@@ -292,7 +311,7 @@ def main():
                 media_path=post_options["media_path"],
             )
             tid = resp.data["id"]
-            print(f"Tweet posted: https://x.com/{env.get('X_USER_HANDLE', 'i')}/status/{tid}")
+            print_post_success(client, env, tid)
             return
 
         env = load_keys()
@@ -318,7 +337,7 @@ def main():
                 exit_error("Usage: xpost tweet \"your message\"")
             resp = create_post(client, env, text=text)
             tid = resp.data["id"]
-            print(f"Tweet posted: https://x.com/{env.get('X_USER_HANDLE', 'i')}/status/{tid}")
+            print_post_success(client, env, tid)
 
         elif cmd == "reply":
             tweet_id = args[1] if len(args) > 1 else None
@@ -328,7 +347,7 @@ def main():
             tweet_id = validate_tweet_id(tweet_id)
             resp = client.create_tweet(text=text, in_reply_to_tweet_id=tweet_id)
             tid = resp.data["id"]
-            print(f"Reply posted: https://x.com/{env.get('X_USER_HANDLE', 'i')}/status/{tid}")
+            print_post_success(client, env, tid, label="Reply posted")
 
         elif cmd == "quote":
             tweet_id = args[1] if len(args) > 1 else None
@@ -338,7 +357,7 @@ def main():
             tweet_id = validate_tweet_id(tweet_id)
             resp = client.create_tweet(text=text, quote_tweet_id=tweet_id)
             tid = resp.data["id"]
-            print(f"Quote tweet posted: https://x.com/{env.get('X_USER_HANDLE', 'i')}/status/{tid}")
+            print_post_success(client, env, tid, label="Quote tweet posted")
 
         elif cmd == "read":
             tweet_id = args[1] if len(args) > 1 else None

@@ -171,6 +171,10 @@ def test_flag_post_with_media_uploads_and_posts(
             calls["tweet"] = kwargs
             return types.SimpleNamespace(data={"id": "123"})
 
+        def get_tweet(self, tweet_id, **kwargs):
+            calls["confirm"] = {"tweet_id": tweet_id, **kwargs}
+            return types.SimpleNamespace(data=types.SimpleNamespace(id=tweet_id))
+
     class FakeMediaApi:
         def simple_upload(self, filename):
             calls["media"] = filename
@@ -204,6 +208,7 @@ def test_flag_post_with_media_uploads_and_posts(
         "media_ids": ["999"],
         "user_auth": True,
     }
+    assert calls["confirm"]["tweet_id"] == "123"
     assert "https://x.com/tester/status/123" in captured.out
     assert captured.err == ""
 
@@ -220,6 +225,10 @@ def test_flag_post_with_text_file_reads_copy_and_posts(
         def create_tweet(self, **kwargs):
             calls["tweet"] = kwargs
             return types.SimpleNamespace(data={"id": "124"})
+
+        def get_tweet(self, tweet_id, **kwargs):
+            calls["confirm"] = {"tweet_id": tweet_id, **kwargs}
+            return types.SimpleNamespace(data=types.SimpleNamespace(id=tweet_id))
 
     monkeypatch.setattr(
         sys,
@@ -243,6 +252,7 @@ def test_flag_post_with_text_file_reads_copy_and_posts(
 
     captured = capsys.readouterr()
     assert calls["tweet"] == {"text": "scheduled copy", "user_auth": True}
+    assert calls["confirm"]["tweet_id"] == "124"
     assert "https://x.com/tester/status/124" in captured.out
     assert captured.err == ""
 
@@ -259,6 +269,10 @@ def test_flag_post_with_video_uses_chunked_upload(
         def create_tweet(self, **kwargs):
             calls["tweet"] = kwargs
             return types.SimpleNamespace(data={"id": "456"})
+
+        def get_tweet(self, tweet_id, **kwargs):
+            calls["confirm"] = {"tweet_id": tweet_id, **kwargs}
+            return types.SimpleNamespace(data=types.SimpleNamespace(id=tweet_id))
 
     class FakeMediaApi:
         def chunked_upload(self, filename):
@@ -293,8 +307,48 @@ def test_flag_post_with_video_uses_chunked_upload(
         "media_ids": ["321"],
         "user_auth": True,
     }
+    assert calls["confirm"]["tweet_id"] == "456"
     assert "https://x.com/tester/status/456" in captured.out
     assert captured.err == ""
+
+
+def test_tweet_exits_when_post_cannot_be_confirmed(
+    monkeypatch, capsys, load_tool_module
+):
+    module = load_tool_module("xpost")
+    calls = {}
+
+    class FakeClient:
+        def create_tweet(self, **kwargs):
+            calls["tweet"] = kwargs
+            return types.SimpleNamespace(data={"id": "789"})
+
+        def get_tweet(self, tweet_id, **kwargs):
+            calls["confirm"] = {"tweet_id": tweet_id, **kwargs}
+            return types.SimpleNamespace(data=None)
+
+    monkeypatch.setattr(sys, "argv", ["xpost", "tweet", "confirm me"])
+    monkeypatch.setattr(
+        module,
+        "load_keys",
+        lambda: {
+            "X_API_KEY": "key",
+            "X_API_SECRET": "secret",
+            "X_ACCESS_TOKEN": "token",
+            "X_ACCESS_TOKEN_SECRET": "token-secret",
+            "X_USER_HANDLE": "tester",
+        },
+    )
+    monkeypatch.setattr(module, "get_client", lambda env: FakeClient())
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.main()
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert calls["tweet"] == {"text": "confirm me", "user_auth": True}
+    assert calls["confirm"]["tweet_id"] == "789"
+    assert "Posted tweet could not be confirmed: 789" in captured.err
 
 
 def test_flag_post_with_bad_media_response_exits(
