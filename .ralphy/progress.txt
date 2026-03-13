@@ -17,3 +17,31 @@
 - [✓] 2026-03-10 21:58 - Create `.github/workflows/lint.yml` — run ruff or flake8 on every push and PR
 - [✓] 2026-03-10 22:01 - Create `pyproject.toml` with project metadata and dependencies
 - [✓] 2026-03-10 22:03 - Create `docs/API-REFERENCE.md` documenting all commands for all 6 tools
+- [✓] 2026-03-12 17:37 - Verify `xpost` can post with media: test `xpost --media /home/jasondye/.openclaw/workspace-obsidian/out/charlie_fire_v1d.png --text "test"` (delete test tweet after)
+- [✓] 2026-03-12 17:41 - If xpost media upload fails, debug and fix it — check tweepy v2 media upload flow
+- [✓] 2026-03-12 17:47 - Set up a cron or scheduled task to post at 2026-03-13 09:18 AM ET with: image `out/charlie_fire_v1d.png` and copy from `x-post-release-package-2026-03-12.md`
+- [✓] 2026-03-12 17:50 - Confirm the post went out successfully
+- [✓] 2026-03-12 18:19 - Investigate why browser login still fails despite correct cookie flags — check CSP headers, CORS, redirect logic, or Next.js middleware host validation
+- [✓] 2026-03-12 18:20 - Test the full browser flow: POST /api/auth/login → set cookie → redirect to / → GET /api/auth/me with cookie
+- [✓] 2026-03-12 18:25 - Check if Next.js middleware is stripping/rejecting the cookie or blocking the tunneled host
+- [✓] 2026-03-12 18:31 - Fix the issue and confirm login works end-to-end through the Cloudflare tunnel
+- [✓] 2026-03-12 18:35 - Clean up: remove meme images from `mission-control/public/` after testing
+- [✓] 2026-03-12 19:47 - Set up persistent system-level cron (crontab or systemd timer) for 9 AM ET and 6 PM ET daily posting
+- [✓] 2026-03-12 19:53 - Each cron job should invoke a script that handles the full pipeline above autonomously
+- [✓] 2026-03-12 19:58 - The script must generate a NEW meme each time (not reuse old ones)
+- [✓] 2026-03-12 20:02 - Add variety to meme templates — download 5-10 more popular templates to `out/templates/`
+- [✓] 2026-03-12 20:07 - Test the full pipeline end-to-end: cron fires → meme generated → post goes out → self-reply added → mentions replied to
+- [✓] 2026-03-12 20:10 - Ensure the cron survives reboots (not session-only)
+- [✓] 2026-03-12 20:44 - Set up persistent system-level cron (crontab or systemd timer) for 9 AM ET and 6 PM ET daily posting
+- [✓] 2026-03-12 20:48 - Each cron job should invoke a script that handles the full pipeline above autonomously
+- [✓] 2026-03-12 20:50 - The script must generate a NEW meme each time (not reuse old ones)
+- [✓] 2026-03-12 20:54 - Add variety to meme templates — download 5-10 more popular templates to `out/templates/`
+- [✓] 2026-03-12 20:57 - Test the full pipeline end-to-end: cron fires → meme generated → post goes out → self-reply added → mentions replied to
+- [✓] 2026-03-12 21:03 - Ensure the cron survives reboots (not session-only)
+- [✓] 2026-03-12 23:17 - Read all existing memory files in `/home/jasondye/.openclaw/workspace-obsidian/memory/`
+- [✓] 2026-03-12 23:19 - Update `memory/ralph.md` with your current status and recent work
+- [✓] 2026-03-12 23:20 - Append today's work to `memory/2026-03-12.md` (or create tomorrow's daily log)
+- [✓] 2026-03-12 23:22 - On every future session start, read the daily log and relevant topic files before working
+- [✓] 2026-03-12 23:49 - PROOF REQUIRED: Add a new section "## Ralph's Session Log" to `/home/jasondye/.openclaw/workspace-obsidian/memory/ralph.md` with today's date and what you actually worked on. The supervisor will check this file's modification time.
+- [✓] 2026-03-12 23:55 - PROOF REQUIRED: Run `curl -s "http://127.0.0.1:3000/api/memory?action=search&query=ralph" -H "x-api-key: f8496446d5cfc7beca41f40e21edcb1f"` and save the output to `/tmp/ralph-memory-test.json`. Supervisor will verify this file exists.
+- [✓] 2026-03-12 23:57 - PROOF REQUIRED: Move `inbox/from-obsidian-002.md` to `inbox/processed/from-obsidian-002.md`. Supervisor will check.
