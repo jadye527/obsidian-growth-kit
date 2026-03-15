@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Obsidian Growth Kit — AI-Powered X/Twitter Growth Tools</title>
+<meta name="description" content="CLI toolkit for autonomous X/Twitter growth. Post, schedule, analyze, scout trends, and generate memes — all from your terminal.">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+<style>
+:root {
+  --pico-background-color: #0a0a0b;
+  --pico-color: #e4e4e7;
+  --pico-primary: #4ade80;
+  --pico-card-background-color: #18181b;
+  --pico-muted-color: #71717a;
+  --pico-border-color: #27272a;
+}
+body { background: #0a0a0b; color: #e4e4e7; }
+.hero { text-align: center; padding: 4rem 1rem; }
+.hero h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
+.hero .subtitle { color: #a1a1aa; font-size: 1.2rem; margin-bottom: 2rem; }
+.badge { display: inline-block; background: #4ade80; color: #0a0a0b; padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.8rem; font-weight: 700; margin-bottom: 1rem; }
+.terminal { background: #18181b; border: 1px solid #3f3f46; border-radius: 12px; padding: 1.5rem; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.85rem; text-align: left; max-width: 640px; margin: 2rem auto; overflow-x: auto; }
+.terminal .prompt { color: #4ade80; }
+.terminal .output { color: #a1a1aa; }
+.terminal .highlight { color: #facc15; }
+.tools-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin: 2rem 0; }
+.tool-card { background: #18181b; border: 1px solid #3f3f46; border-radius: 12px; padding: 1.5rem; }
+.tool-card h3 { margin-top: 0; font-size: 1.1rem; }
+.tool-card .tag { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 999px; font-weight: 600; }
+.tag-free { background: #4ade8033; color: #4ade80; }
+.tag-pro { background: #60a5fa33; color: #60a5fa; }
+.comparison { margin: 3rem 0; }
+.comparison table { width: 100%; border-collapse: collapse; }
+.comparison th, .comparison td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid #27272a; }
+.comparison th { color: #a1a1aa; font-size: 0.85rem; text-transform: uppercase; }
+.check { color: #4ade80; }
+.cross { color: #71717a; }
+.cta-section { text-align: center; padding: 3rem 1rem; }
+.cta-section h2 { margin-bottom: 1rem; }
+.btn-primary { display: inline-block; background: #4ade80; color: #0a0a0b; padding: 0.85rem 2rem; border-radius: 8px; font-weight: 700; text-decoration: none; font-size: 1rem; margin: 0.5rem; }
+.btn-primary:hover { background: #22c55e; color: #0a0a0b; }
+.btn-secondary { display: inline-block; background: transparent; color: #e4e4e7; padding: 0.85rem 2rem; border-radius: 8px; font-weight: 700; text-decoration: none; font-size: 1rem; border: 1px solid #3f3f46; margin: 0.5rem; }
+.btn-secondary:hover { border-color: #4ade80; color: #4ade80; }
+.newsletter { background: #18181b; border: 1px solid #3f3f46; border-radius: 12px; padding: 2rem; max-width: 500px; margin: 2rem auto; text-align: center; }
+.newsletter input[type="email"] { background: #27272a; border: 1px solid #3f3f46; color: #e4e4e7; padding: 0.75rem 1rem; border-radius: 8px; width: 100%; margin-bottom: 0.75rem; font-size: 0.95rem; }
+.stats { display: flex; justify-content: center; gap: 3rem; margin: 2rem 0; flex-wrap: wrap; }
+.stat { text-align: center; }
+.stat .num { font-size: 2rem; font-weight: 700; color: #4ade80; }
+.stat .label { color: #71717a; font-size: 0.85rem; }
+footer { text-align: center; padding: 2rem; color: #71717a; font-size: 0.85rem; border-top: 1px solid #27272a; margin-top: 3rem; }
+footer a { color: #4ade80; }
+</style>
+</head>
+<body>
+<main class="container">
+
+<!-- Hero -->
+<section class="hero">
+  <span class="badge">Open Source</span>
+  <h1>Obsidian Growth Kit</h1>
+  <p class="subtitle">AI-powered CLI toolkit for autonomous X/Twitter growth.<br>Post, schedule, analyze, scout, and generate memes — from your terminal.</p>
+
+  <div class="terminal">
+    <div><span class="prompt">$</span> xanalytics report</div>
+    <div class="output">Followers: 14 | Posts: 162 | Engagement rate: 6.51%</div>
+    <br>
+    <div><span class="prompt">$</span> xscout viral</div>
+    <div class="output">Found 3 viral posts (50+ likes) in your niche</div>
+    <br>
+    <div><span class="prompt">$</span> xmeme generate --topic agents</div>
+    <div class="output">Generated: meme-20260314.png</div>
+    <div class="highlight">Caption: "Zero employees. Three agents. 41 dashboard panels."</div>
+    <br>
+    <div><span class="prompt">$</span> xqueue add "caption" --media meme.png</div>
+    <div class="output">Queued + 1 media. (3 in queue)</div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="num">11</div><div class="label">CLI Tools</div></div>
+    <div class="stat"><div class="num">0</div><div class="label">Dependencies*</div></div>
+    <div class="stat"><div class="num">$0</div><div class="label">Infrastructure</div></div>
+  </div>
+  <p style="color: #71717a; font-size: 0.75rem;">*Just Python 3.10+ and tweepy</p>
+</section>
+
+<!-- Tools Grid -->
+<section>
+  <h2 style="text-align:center;">The Toolkit</h2>
+  <div class="tools-grid">
+    <div class="tool-card">
+      <h3>xpost <span class="tag tag-free">FREE</span></h3>
+      <p>Post, reply, quote, search, read, follow/unfollow, like. Full X API via tweepy with media upload support.</p>
+    </div>
+    <div class="tool-card">
+      <h3>xqueue <span class="tag tag-free">FREE</span></h3>
+      <p>Schedule tweets with 15-min cooldown. Queue posts with media. Drip-feed throughout the day.</p>
+    </div>
+    <div class="tool-card">
+      <h3>xanalytics <span class="tag tag-free">FREE</span></h3>
+      <p>Track followers, engagement, top posts. Day-over-day comparison. Snapshot metrics every 4 hours.</p>
+    </div>
+    <div class="tool-card">
+      <h3>xscout <span class="tag tag-pro">PRO</span></h3>
+      <p>Content scout across 4 topic categories. Find viral posts (50+ likes), reply opportunities, and trending threads.</p>
+    </div>
+    <div class="tool-card">
+      <h3>xmeme <span class="tag tag-pro">PRO</span></h3>
+      <p>Pillow-based meme generator. Terminal dark theme. 12+ templates across 4 topics. 2x algo boost from media.</p>
+    </div>
+    <div class="tool-card">
+      <h3>xgrowth <span class="tag tag-pro">PRO</span></h3>
+      <p>Strategy engine. Track what's working, log experiments, performance by post type, nightly review reports.</p>
+    </div>
+    <div class="tool-card">
+      <h3>xrecord <span class="tag tag-pro">PRO</span></h3>
+      <p>Record terminal demos as asciinema casts. Auto-typing effect. Convert to GIF/SVG for content.</p>
+    </div>
+    <div class="tool-card">
+      <h3>xcron <span class="tag tag-pro">PRO</span></h3>
+      <p>Automated posting schedules. Morning growth routine, queue drip, nightly analytics review — all on cron.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Comparison Table -->
+<section class="comparison">
+  <h2 style="text-align:center;">Free vs Pro</h2>
+  <table>
+    <thead>
+      <tr><th>Feature</th><th>Free</th><th>Pro ($49)</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>xpost (tweet, reply, quote, media)</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+      <tr><td>xqueue (scheduling + drip)</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+      <tr><td>xanalytics (basic metrics)</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+      <tr><td>Quickstart guide</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+      <tr><td>xscout (content discovery)</td><td class="cross">&#10007;</td><td class="check">&#10003;</td></tr>
+      <tr><td>xmeme (image generation)</td><td class="cross">&#10007;</td><td class="check">&#10003;</td></tr>
+      <tr><td>xgrowth (strategy engine)</td><td class="cross">&#10007;</td><td class="check">&#10003;</td></tr>
+      <tr><td>xrecord (terminal demos)</td><td class="cross">&#10007;</td><td class="check">&#10003;</td></tr>
+      <tr><td>xcron (automation recipes)</td><td class="cross">&#10007;</td><td class="check">&#10003;</td></tr>
+      <tr><td>Content playbook (10 chapters)</td><td class="cross">&#10007;</td><td class="check">&#10003;</td></tr>
+      <tr><td>Agent automation templates</td><td class="cross">&#10007;</td><td class="check">&#10003;</td></tr>
+      <tr><td>Priority support</td><td class="cross">&#10007;</td><td class="check">&#10003;</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- Newsletter Capture -->
+<section>
+  <div class="newsletter">
+    <h3>The Agent Report</h3>
+    <p style="color: #a1a1aa; font-size: 0.9rem;">Weekly newsletter: what our AI agents built, trading results, and growth tactics that actually work.</p>
+    <form action="https://buttondown.com/api/emails/embed-subscribe/obsidianlabs" method="post" target="_blank">
+      <input type="email" name="email" placeholder="your@email.com" required>
+      <button type="submit" class="btn-primary" style="width:100%; border:none; cursor:pointer;">Subscribe Free</button>
+    </form>
+    <p style="color: #71717a; font-size: 0.75rem; margin-top: 0.5rem;">No spam. Unsubscribe anytime.</p>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <h2>Start Growing</h2>
+  <p style="color: #a1a1aa;">Free tier is fully functional. Pro unlocks the full automation stack.</p>
+  <br>
+  <a href="https://github.com/jadye527/obsidian-growth-kit" class="btn-primary">Get Free Tier on GitHub</a>
+  <a href="https://jadye527.github.io/obsidian-trading/" class="btn-secondary">Get Pro ($49)</a>
+</section>
+
+<!-- Social Proof -->
+<section style="text-align:center; padding: 2rem 0;">
+  <p style="color: #a1a1aa; font-size: 0.9rem;">Built by <a href="https://x.com/ObsidianLabsAI" style="color: #4ade80;">@ObsidianLabsAI</a> — an AI agent team that runs autonomously 24/7.</p>
+  <p style="color: #71717a; font-size: 0.85rem;">41 dashboard panels. 112 API routes. 3 agents. 0 employees.</p>
+</section>
+
+</main>
+
+<footer>
+  <p>Built by <a href="https://x.com/ObsidianLabsAI">Obsidian Labs</a> | <a href="https://github.com/jadye527/obsidian-growth-kit">GitHub</a></p>
+  <p>Powered by OpenClaw</p>
+</footer>
+
+</body>
+</html>
